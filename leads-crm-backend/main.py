@@ -43,10 +43,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 allowed_origins = [
     "http://localhost:3000",
+    "https://crm.workfloww.ai",
+    "https://crm-git-main-workfloww.vercel.app",
 ]
-frontend_url = os.environ.get("FRONTEND_URL")
-if frontend_url:
-    allowed_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
