@@ -19,10 +19,14 @@ from auth.dependencies import get_current_user
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import csv
 import io
 import json
 from fastapi import UploadFile, File
+from fastapi import Request
 
 
 
@@ -30,11 +34,22 @@ from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from fastapi.responses import Response
 from openpyxl import load_workbook
+import os
 
 app = FastAPI()
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+allowed_origins = [
+    "http://localhost:3000",
+    "https://crm.workfloww.ai",
+    "https://crm-git-main-workfloww.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,7 +61,9 @@ def read_root():
     return {"status": "ok", "message": "Leads CRM backend is running"}
 
 @app.get("/leads")
+@limiter.limit("60/minute")
 def get_leads(
+    request: Request,
     page: int = 1, 
     page_size: int = 20,
     search: Optional[str] = None,
@@ -73,7 +90,8 @@ def get_leads(
     return {"leads": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/leads")
-def create_lead(lead: LeadCreate, user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+def create_lead(request: Request, lead: LeadCreate, user=Depends(get_current_user)):
     response = db_create_lead(lead.model_dump())
     new_lead = response.data[0]
 
@@ -87,7 +105,8 @@ def create_lead(lead: LeadCreate, user=Depends(get_current_user)):
     return response.data
 
 @app.patch("/leads/{lead_id}")
-def update_lead(lead_id: str, lead: LeadUpdate, user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(get_current_user)):
     update_data = lead.model_dump(exclude_unset=True)
     if "status" in update_data:
         old_lead = get_lead_status(lead_id)
@@ -107,22 +126,26 @@ def update_lead(lead_id: str, lead: LeadUpdate, user=Depends(get_current_user)):
     return response.data
 
 @app.delete("/leads/{lead_id}")
-def delete_lead(lead_id: str, user=Depends(require_admin)):
+@limiter.limit("60/minute")
+def delete_lead(request: Request, lead_id: str, user=Depends(require_admin)):
     response = db_delete_lead(lead_id)
     return {"deleted": True, "id": lead_id}
 
 @app.get("/me")
-def get_me(user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+def get_me(request: Request, user=Depends(get_current_user)):
     profile = get_profile(user.id)
     return profile.data
 
 @app.get("/leads/{lead_id}/activities")
-def get_lead_activities(lead_id: str, user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+def get_lead_activities(request: Request, lead_id: str, user=Depends(get_current_user)):
     response = db_get_lead_activities(lead_id)
     return response.data
 
 @app.post("/leads/{lead_id}/notes")
-def create_note(lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
+@limiter.limit("60/minute")
+def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
     create_activity({
         "lead_id": lead_id,
         "user_id": user.id,
@@ -132,7 +155,8 @@ def create_note(lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
     return {"status": "ok"}
 
 @app.get("/leads/export")
-def export_leads(user=Depends(get_current_user)):
+@limiter.limit("5/minute")
+def export_leads(request: Request, user=Depends(get_current_user)):
     response = get_all_leads()
     leads = response.data
 
@@ -157,7 +181,8 @@ REQUIRED_COLUMNS = [
 VALID_STATUSES = {"New", "Contacted", "Follow-up", "Won", "Lost"}
 
 @app.get("/leads/import-template")
-def import_template(user=Depends(get_current_user)):
+@limiter.limit("5/minute")
+def import_template(request: Request, user=Depends(get_current_user)):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(REQUIRED_COLUMNS)
@@ -318,7 +343,8 @@ def delete_attachment(attachment_id: str, user=Depends(get_current_user)):
     return {"deleted": True}
 
 @app.get("/leads/import-template-xlsx")
-def import_template_xlsx(user=Depends(get_current_user)):
+@limiter.limit("5/minute")
+def import_template_xlsx(request: Request, user=Depends(get_current_user)):
     wb = Workbook()
     ws = wb.active
     ws.title = "Leads"
