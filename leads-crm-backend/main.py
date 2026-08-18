@@ -34,14 +34,23 @@ from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from fastapi.responses import Response
 from openpyxl import load_workbook
+import os
 
 app = FastAPI()
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+allowed_origins = [
+    "http://localhost:3000",
+]
+frontend_url = os.environ.get("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

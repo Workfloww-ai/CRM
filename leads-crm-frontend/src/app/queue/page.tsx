@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/ui/Sidebar'
 import { Phone, MessageCircle } from 'lucide-react'
+import { API_URL } from '@/lib/api'
 
 type Lead = {
     id: string
@@ -62,10 +63,10 @@ export default function QueuePage() {
             if (!token) return
 
             const [leadsRes, profileRes] = await Promise.all([
-                fetch('http://localhost:8000/leads?page=1&page_size=1000&sort_by=due_date&sort_dir=asc', {
+                fetch(`${API_URL}/leads?page=1&page_size=1000&sort_by=due_date&sort_dir=asc`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
-                fetch('http://localhost:8000/me', {
+                fetch(`${API_URL}/me`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             ])

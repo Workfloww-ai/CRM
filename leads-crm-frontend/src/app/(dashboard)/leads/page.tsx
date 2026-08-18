@@ -6,6 +6,7 @@ import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu } from 'lucide-react'
+import { API_URL } from '@/lib/api'
 
 type Lead = {
   id: string
@@ -155,7 +156,7 @@ export default function LeadsPage() {
       params.set('sort_dir', sortConfig.direction)
     }
 
-    const res = await fetch(`http://localhost:8000/leads?${params.toString()}`, {
+    const res = await fetch(`${API_URL}/leads?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -175,7 +176,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch('http://localhost:8000/me', {
+    const res = await fetch(`${API_URL}/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -194,7 +195,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`http://localhost:8000/leads/${leadId}/activities`, {
+    const res = await fetch(`${API_URL}/leads/${leadId}/activities`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -210,7 +211,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`http://localhost:8000/leads/${leadId}/attachments`, {
+    const res = await fetch(`${API_URL}/leads/${leadId}/attachments`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -230,7 +231,7 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    await fetch(`http://localhost:8000/leads/${leadId}/attachments`, {
+    await fetch(`${API_URL}/leads/${leadId}/attachments`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
@@ -244,7 +245,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`http://localhost:8000/attachments/${attachmentId}/download`, {
+    const res = await fetch(`${API_URL}/attachments/${attachmentId}/download`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -259,7 +260,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`http://localhost:8000/attachments/${attachmentId}`, {
+    await fetch(`${API_URL}/attachments/${attachmentId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -272,7 +273,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch('http://localhost:8000/leads', {
+    const res = await fetch(`${API_URL}/leads`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -333,7 +334,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`http://localhost:8000/leads/${leadId}`, {
+    await fetch(`${API_URL}/leads/${leadId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -349,7 +350,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`http://localhost:8000/leads/${leadId}`, {
+    await fetch(`${API_URL}/leads/${leadId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -368,7 +369,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`http://localhost:8000/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/leads/${leadId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -405,7 +406,7 @@ export default function LeadsPage() {
       due_date: due_date || null
     }
 
-    const res = await fetch(`http://localhost:8000/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/leads/${leadId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -432,7 +433,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`http://localhost:8000/leads/${leadId}/notes`, {
+    const res = await fetch(`${API_URL}/leads/${leadId}/notes`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -443,7 +444,7 @@ export default function LeadsPage() {
 
     if (res.ok) {
       setCommentText('')
-      const actsRes = await fetch(`http://localhost:8000/leads/${leadId}/activities`, {
+      const actsRes = await fetch(`${API_URL}/leads/${leadId}/activities`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (actsRes.ok) {
@@ -461,7 +462,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`http://localhost:8000/leads/${leadId}`, {
+    await fetch(`${API_URL}/leads/${leadId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -478,7 +479,7 @@ export default function LeadsPage() {
     if (!token) return
 
     await Promise.all(selectedLeads.map(leadId =>
-      fetch(`http://localhost:8000/leads/${leadId}`, {
+      fetch(`${API_URL}/leads/${leadId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -492,7 +493,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch('http://localhost:8000/leads/export', {
+    const res = await fetch(`${API_URL}/leads/export`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -509,7 +510,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch('http://localhost:8000/leads/import-template-xlsx', {
+    const res = await fetch(`${API_URL}/leads/import-template-xlsx`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -532,7 +533,7 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const res = await fetch('http://localhost:8000/leads/import', {
+    const res = await fetch(`${API_URL}/leads/import`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,

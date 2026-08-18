@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/ui/Sidebar'
 import { SidebarProvider, useSidebar } from '@/contexts/SidebarContext'
+import { API_URL } from '@/lib/api'
 
 type Profile = {
   full_name: string
@@ -21,7 +22,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       const token = data.session?.access_token
       if (!token) return
 
-      const res = await fetch('http://localhost:8000/me', {
+      const res = await fetch(`${API_URL}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {

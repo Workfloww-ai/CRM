@@ -5,6 +5,12 @@ import { supabase } from '@/lib/supabase'
 import { LogIn, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
+const ALLOWED_DOMAIN = 'workfloww.ai'
+
+function isAllowedEmail(email: string) {
+  return email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`)
+}
+
 export default function Home() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -13,6 +19,10 @@ export default function Home() {
   const router = useRouter()
 
   async function handleSignUp() {
+    if (!isAllowedEmail(email)) {
+      setMessage('Opps! You are not a part of our team.')
+      return
+    }
     setIsLoading(true)
     const { error } = await supabase.auth.signUp({ email, password })
     setMessage(error ? `Error: ${error.message}` : 'Check your email to confirm signup!')
@@ -20,6 +30,10 @@ export default function Home() {
   }
 
   async function handleLogin() {
+    if (!isAllowedEmail(email)) {
+      setMessage('Opps! You are not a part of our team..')
+      return
+    }
     setIsLoading(true)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
@@ -34,9 +48,9 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#09090b] px-4">
       <div className="max-w-md w-full space-y-8 bg-white dark:bg-neutral-900 p-8 rounded-xl shadow-lg border border-gray-100 dark:border-neutral-800">
         <div>
-          <img 
-            src="/logo.jpeg" 
-            alt="Workfloww.ai Logo" 
+          <img
+            src="/logo.jpeg"
+            alt="Workfloww.ai Logo"
             className="w-12 h-12 mx-auto object-contain rounded-lg"
           />
           <h2 className="mt-6 text-center text-2xl font-bold text-gray-900 dark:text-white">
@@ -97,7 +111,7 @@ export default function Home() {
           </div>
 
           {message && (
-            <div className={`p-4 rounded-lg text-sm ${message.startsWith('Error:') ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+            <div className={`p-4 rounded-lg text-sm ${message.startsWith('Error:') || message.startsWith('Opps!') ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
               {message}
             </div>
           )}
