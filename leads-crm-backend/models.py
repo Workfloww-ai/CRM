@@ -13,6 +13,7 @@ class LeadCreate(BaseModel):
     linkedin: Optional[str] = None
     location: Optional[str] = None
     industry: Optional[str] = None
+    function: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
     due_date: Optional[str] = None
@@ -31,6 +32,7 @@ class LeadUpdate(BaseModel):
     linkedin: Optional[str] = None
     location: Optional[str] = None
     industry: Optional[str] = None
+    function: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
     due_date: Optional[str] = None
