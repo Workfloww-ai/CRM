@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/ui/Sidebar'
-import { Phone, MessageCircle } from 'lucide-react'
+import { Phone, MessageCircle, Menu } from 'lucide-react'
+import { useSidebar } from '@/contexts/SidebarContext'
 import { API_URL } from '@/lib/api'
 
 type Lead = {
@@ -51,6 +52,7 @@ export default function QueuePage() {
     const [leads, setLeads] = useState<Lead[]>([])
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
+    const { isSidebarOpen, setIsSidebarOpen } = useSidebar()
 
     async function getToken() {
         const { data } = await supabase.auth.getSession()
@@ -93,19 +95,26 @@ export default function QueuePage() {
     }
 
     return (
-        <div className="h-screen flex overflow-hidden bg-gray-50 dark:bg-[#09090b] text-gray-900 dark:text-gray-100 font-sans">
-            <Sidebar profile={profile} />
-
+        <>
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <header className="h-16 px-6 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center shrink-0">
-                    <h1 className="text-xl font-semibold">Queue</h1>
+                <header className="px-6 py-3 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col justify-center shrink-0 relative">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className="p-1.5 -ml-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                            title="Toggle Sidebar"
+                        >
+                            <Menu className="w-5 h-5" />
+                        </button>
+                        <div className="flex flex-col">
+                            <h1 className="text-xl font-semibold leading-tight">Today's Queue</h1>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">Sorted By Urgency — Overdue First</p>
+                        </div>
+                    </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-6">
-                    <div className="max-w-4xl mx-auto">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Today's queue</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Sorted by urgency — overdue first</p>
-
+                    <div className="max-w-4xl">
                         <div className="space-y-3">
                             {leads.map((lead) => {
                                 const overdue = isOverdue(lead.due_date)
@@ -130,33 +139,33 @@ export default function QueuePage() {
                                             <span className={`text-sm font-medium ${overdue ? 'text-red-600' : 'text-gray-500'}`}>
                                                 Due {formatDue(lead.due_date)}
                                             </span>
-                                            {lead.phone && (
+                                            {/* {lead.phone && (
                                                 <a href={`tel:${lead.phone}`}
-                                                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:opacity-90 transition-opacity"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:opacity-90 transition-opacity"
                                                 >
                                                     <Phone className="w-3.5 h-3.5" /> Call
                                                 </a>
                                             )}
                                             {wa && (
                                                 <a href={wa}
-                                                   target="_blank"
-                                                   rel="noopener noreferrer"
-                                                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 dark:bg-green-900/20 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
                                                 >
                                                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                                                 </a>
-                                            )}
+                                            )} */}
                                         </div>
                                     </div>
                                 )
                             })}
-                    {leads.length === 0 && (
-                        <p className="text-sm text-gray-500 text-center py-12">No pending actions — you're all caught up.</p>
-                    )}
-                </div>
-        </div>
-        </div >
-      </main >
-    </div >
-  )
+                            {leads.length === 0 && (
+                                <p className="text-sm text-gray-500 text-center py-12">No pending actions — you're all caught up.</p>
+                            )}
+                        </div>
+                    </div>
+                </div >
+            </main >
+        </>
+    )
 }
