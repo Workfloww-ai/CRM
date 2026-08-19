@@ -87,6 +87,8 @@ create table leads (
   linkedin text,
   location text,
   industry text,
+  revenue numeric,
+  currency text default 'INR',
   status lead_status not null default 'New',
   next_action text,
   due_date date,
@@ -107,7 +109,11 @@ create table profiles (
 
 **Schema note — `first_name`/`last_name`/`phone_2` (migrated from a single `name` field):** originally `leads` had one `name text not null` column; migrated to `first_name` (required) + `last_name` (optional) + added `phone_2`, to match the column structure of LinkedIn CSV exports the team imports from (Sr. No / Company / First Name / Last Name / Title / Email / Phone Number 1 / Phone Number 2 / Profile Url — `Sr. No` and `Company`/`Profile Url` map to `org`/`linkedin`, not new columns). `industry` was added separately afterward as a general-purpose column, not from the LinkedIn format. `REQUIRED_COLUMNS` in `main.py` was updated to match both changes — see below. The frontend combines `first_name` + `last_name` into a single display string via a `fullName(lead)` helper in `leads/page.tsx` — the split is preserved in the database (useful for future personalization, e.g. "Dear {first_name}"), combined only at render time. **If migrating existing data with a similar split**, watch for single-word names: `substring(name from position(' ' in name) + 1)` incorrectly duplicates the whole string into `last_name` when there's no space (since `position()` returns 0, not null, when not found) — fix with `update leads set last_name = null where first_name = last_name`.
 
-**`REQUIRED_COLUMNS`** in `main.py` is the single source of truth for CSV export, CSV import, the CSV template, the Excel template (`.xlsx`, with a dropdown-validated Status column via `openpyxl`), and Excel import — currently `["first_name", "last_name", "title", "org", "email", "phone", "phone_2", "linkedin", "location", "industry", "status", "next_action", "due_date"]`. Keep it in sync with the `leads` table if columns change again — also keep `LeadCreate`/`LeadUpdate` in `models.py` in sync, since Pydantic silently drops any field not declared on the model.
+**`REQUIRED_COLUMNS`** in `main.py` is the single source of truth for CSV export, CSV import, the CSV template, the Excel template (`.xlsx`, with a dropdown-validated Status column via `openpyxl`), and Excel import — currently `["first_name", "last_name", "title", "org", "email", "phone", "phone_2", "linkedin", "location", "industry", "status", "next_action", "due_date", "revenue", "currency"]`. Keep it in sync with the `leads` table if columns change again — also keep `LeadCreate`/`LeadUpdate` in `models.py` in sync, since Pydantic silently drops any field not declared on the model.
+
+**`revenue`/`currency`:** `revenue` is `numeric` (not `float`) to avoid rounding errors on money; `currency` defaults to `'INR'`. Stored as separate fields (not a single formatted string like "₹28L") specifically so future reporting (Phase 5) can sum/aggregate by currency. The frontend's `formatRevenue()` helper (in `pipeline/page.tsx`, and reusable elsewhere) renders INR in lakh/crore notation and other currencies in K/M notation for display only — the raw number is always what's stored and sent to the API.
+
+**New pages — `/pipeline` and `/queue`:** both reuse the existing `GET /leads` endpoint (large `page_size` to fetch everything, then group/filter client-side) — no new backend endpoints were needed. `/pipeline` groups leads into 5 columns by `status` (kanban-style, no drag-and-drop yet). `/queue` fetches sorted by `?sort_by=due_date&sort_dir=asc`, filters to leads with a `next_action` set, flags overdue ones in red, and provides `tel:`/`wa.me` quick-action links using each lead's `phone`.
 
 **Also built (Phase 2/3):** `lead_activities` (audit log — see below), `attachments` (tracks files stored in the `lead-attachments` Storage bucket: `lead_id`, `file_name`, `storage_path`, `uploaded_by`).
 

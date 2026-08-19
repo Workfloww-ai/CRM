@@ -27,6 +27,7 @@ import io
 import json
 from fastapi import UploadFile, File
 from fastapi import Request
+from db.client import get_client_for_user
 
 
 
@@ -35,8 +36,16 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from fastapi.responses import Response
 from openpyxl import load_workbook
 import os
+import re
 
 app = FastAPI()
+
+from fastapi.responses import JSONResponse
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={'detail': str(exc)}, headers={'Access-Control-Allow-Origin': '*'})
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -55,6 +64,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def sanitize_filename(filename: str) -> str:
+    filename = filename.replace("/", "").replace("\\", "")
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    return filename[:200]  # cap length too, just in case
 
 @app.get("/")
 def read_root():
@@ -72,6 +85,7 @@ def get_leads(
     title: Optional[str] = None,
     location: Optional[str] = None,
     industry: Optional[str] = None,
+    function: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
     user=Depends(get_current_user)
@@ -86,7 +100,7 @@ def get_leads(
     elif sort_by == "status":
         db_sort_by = "status"
 
-    response = get_leads_page(page, page_size, search, name, org, title, location, industry, db_sort_by, sort_desc)
+    response = get_leads_page(page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc)
     return {"leads": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/leads")
@@ -108,6 +122,9 @@ def create_lead(request: Request, lead: LeadCreate, user=Depends(get_current_use
 @limiter.limit("60/minute")
 def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(get_current_user)):
     update_data = lead.model_dump(exclude_unset=True)
+    from datetime import datetime, timezone
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
     if "status" in update_data:
         old_lead = get_lead_status(lead_id)
         old_status = old_lead.data["status"]
@@ -157,7 +174,8 @@ def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(g
 @app.get("/leads/export")
 @limiter.limit("5/minute")
 def export_leads(request: Request, user=Depends(get_current_user)):
-    response = get_all_leads()
+    client = get_client_for_user(user.token)
+    response = get_all_leads(client)
     leads = response.data
 
     output = io.StringIO()
@@ -175,7 +193,7 @@ def export_leads(request: Request, user=Depends(get_current_user)):
 
 REQUIRED_COLUMNS = [
     "first_name", "last_name", "title", "org", "email", "phone", "phone_2",
-    "linkedin", "location", "industry", "status", "next_action", "due_date",
+    "linkedin", "location", "industry", "function", "status", "next_action", "due_date",
     "revenue", "currency"
 ]
 VALID_STATUSES = {"New", "Contacted", "Follow-up", "Won", "Lost"}
@@ -201,15 +219,18 @@ LINKEDIN_COLUMN_MAP = {
     "Email": "email",
     "Phone Number 1": "phone",
     "Phone Number 2": "phone_2",
+    "Phone Number": "phone",
     "Profile Url": "linkedin",
 }
-LINKEDIN_REQUIRED_HEADERS = set(LINKEDIN_COLUMN_MAP.keys())
+LINKEDIN_REQUIRED_HEADERS = {"First Name", "Last Name", "Company"}
 
 
 def normalize_linkedin_row(raw_row: dict) -> dict:
     mapped = {col: None for col in REQUIRED_COLUMNS}
     for linkedin_col, internal_col in LINKEDIN_COLUMN_MAP.items():
-        mapped[internal_col] = raw_row.get(linkedin_col)
+        val = raw_row.get(linkedin_col)
+        if val is not None and val != "":
+            mapped[internal_col] = val
     mapped["status"] = "New"  # LinkedIn exports don't have a status column
     return mapped
 
@@ -295,7 +316,11 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
 @app.post("/leads/{lead_id}/attachments")
 def upload_attachment(lead_id: str, file: UploadFile = File(...), user=Depends(get_current_user)):
     file_bytes = file.file.read()
-    storage_path = f"{lead_id}/{file.filename}"
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
+    safe_filename = sanitize_filename(file.filename)
+    storage_path = f"{lead_id}/{safe_filename}"
 
     upload_file_to_storage(storage_path, file_bytes, file.content_type)
 

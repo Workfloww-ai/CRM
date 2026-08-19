@@ -1,5 +1,5 @@
 from fastapi import Header, HTTPException
-from db.client import supabase
+from db.client import supabase_anon
 from supabase_auth.errors import AuthApiError
 
 ALLOWED_DOMAIN = "workfloww.ai"
@@ -11,7 +11,7 @@ def get_current_user(authorization: str = Header(None)):
 
     token = authorization.replace("Bearer ", "")
     try:
-        user_response = supabase.auth.get_user(token)
+            user_response = supabase_anon.auth.get_user(token)
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -26,4 +26,11 @@ def get_current_user(authorization: str = Header(None)):
             detail="You are not a part of our team",
         )
 
-    return user
+    class AuthenticatedUser:
+        def __init__(self, user, token):
+            self.user = user
+            self.token = token
+        def __getattr__(self, item):
+            return getattr(self.user, item)
+            
+    return AuthenticatedUser(user_response.user, token)

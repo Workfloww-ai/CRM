@@ -1,10 +1,14 @@
 from db.client import supabase
 
 
-def get_all_leads():
+def get_all_leads(client):
     return (
-        supabase.table("leads")
-        .select("id, first_name, last_name, title, org, email, phone, phone_2, linkedin, location, industry, revenue, currency, status, next_action, due_date, created_at, updated_at, deleted_at")
+        client.table("leads")
+        .select(
+            "id, first_name, last_name, title, org, email, phone, phone_2, "
+            "linkedin, location, industry, function, revenue, currency, status, "
+            "next_action, due_date, created_at, updated_at, deleted_at"
+        )
         .is_("deleted_at", "null")
         .execute()
     )
@@ -109,6 +113,7 @@ def get_leads_page(
     title: str = None,
     location: str = None,
     industry: str = None,
+    function: str = None,
     sort_by: str = "created_at",
     sort_desc: bool = True
 ):
@@ -116,7 +121,7 @@ def get_leads_page(
     end = start + page_size - 1
 
     query = supabase.table("leads").select(
-        "id, first_name, last_name, title, org, email, phone, phone_2, linkedin, location, industry, revenue, currency, status, next_action, due_date, created_at, updated_at, deleted_at, lead_activities(created_at, profiles(full_name))",
+        "id, first_name, last_name, title, org, email, phone, phone_2, linkedin, location, industry, function, revenue, currency, status, next_action, due_date, created_at, updated_at, deleted_at, lead_activities(created_at, profiles(full_name))",
         count="exact"
     )
     query = query.is_("deleted_at", "null")
@@ -125,7 +130,7 @@ def get_leads_page(
     if search:
         safe_search = search.replace('"', '')
         search_pattern = f'%{safe_search}%'
-        query = query.or_(f'first_name.ilike."{search_pattern}",last_name.ilike."{search_pattern}",org.ilike."{search_pattern}",title.ilike."{search_pattern}",location.ilike."{search_pattern}",industry.ilike."{search_pattern}"')
+        query = query.or_(f'first_name.ilike."{search_pattern}",last_name.ilike."{search_pattern}",org.ilike."{search_pattern}",title.ilike."{search_pattern}",location.ilike."{search_pattern}",industry.ilike."{search_pattern}",function.ilike."{search_pattern}"')
     
     if name:
         safe_name = name.replace('"', '')
@@ -143,8 +148,13 @@ def get_leads_page(
     if industry:
         industry_pattern = f"%{industry}%"
         query = query.ilike("industry", industry_pattern)
+    if function:
+        function_pattern = f"%{function}%"
+        query = query.ilike("function", function_pattern)
 
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
+    if sort_by != "updated_at":
+        query = query.order("updated_at", desc=True, nullsfirst=False)
     query = query.range(start, end)
     
     return query.execute()

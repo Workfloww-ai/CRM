@@ -15,6 +15,7 @@ type Lead = {
   title: string | null
   org: string | null
   industry: string | null
+  function: string | null
   email: string | null
   phone: string | null
   phone_2: string | null
@@ -64,10 +65,6 @@ function fullName(lead: Lead) {
 
 function formatDesignation(title: string | null) {
   if (!title) return '—'
-  const words = title.split(' ')
-  if (words.length > 3) {
-    return words.slice(0, 3).join(' ') + '...'
-  }
   return title
 }
 
@@ -102,6 +99,8 @@ export default function LeadsPage() {
   const [phone, setPhone] = useState('')
   const [phone2, setPhone2] = useState('')
   const [email, setEmail] = useState('')
+  const [location, setLocation] = useState('')
+  const [functionField, setFunctionField] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [nameFilter, setNameFilter] = useState('')
@@ -109,7 +108,8 @@ export default function LeadsPage() {
   const [designationFilter, setDesignationFilter] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
-  const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | null>(null)
+  const [functionFilter, setFunctionFilter] = useState('')
+  const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
@@ -151,6 +151,7 @@ export default function LeadsPage() {
     if (designationFilter) params.set('title', designationFilter)
     if (locationFilter) params.set('location', locationFilter)
     if (industryFilter) params.set('industry', industryFilter)
+    if (functionFilter) params.set('function', functionFilter)
     if (sortConfig.key) {
       params.set('sort_by', sortConfig.key)
       params.set('sort_dir', sortConfig.direction)
@@ -170,7 +171,7 @@ export default function LeadsPage() {
     setLeads(data.leads)
     setTotalLeads(data.total)
     setLoading(false)
-  }, [page, search, nameFilter, companyFilter, sortConfig])
+  }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
 
   async function fetchProfile() {
     const token = await getToken()
@@ -285,7 +286,9 @@ export default function LeadsPage() {
         title,
         org,
         industry,
+        function: functionField,
         status,
+        location,
         phone,
         phone_2: phone2,
         email,
@@ -310,6 +313,8 @@ export default function LeadsPage() {
       setPhone('')
       setPhone2('')
       setEmail('')
+      setLocation('')
+      setFunctionField('')
       setIsAddLeadModalOpen(false)
       fetchLeads()
     }
@@ -317,7 +322,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, sortConfig])
+  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -785,6 +790,35 @@ export default function LeadsPage() {
                       </th>
                       <th scope="col" className="px-3 py-2 text-left align-top relative">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
+                          <div className="p-1 -ml-1 flex items-center">
+                            Function
+                          </div>
+                          <button
+                            onClick={() => setOpenFilter(openFilter === 'function' ? null : 'function')}
+                            className={`ml-1 p-1 rounded transition-colors ${functionFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
+                          >
+                            <Filter className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {openFilter === 'function' && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
+                            <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
+                              <input
+                                autoFocus
+                                type="text"
+                                placeholder="Filter function..."
+                                value={functionFilter}
+                                onChange={(e) => setFunctionFilter(e.target.value)}
+                                className="w-full px-2 py-1.5 text-sm bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-md focus:ring-2 focus:ring-brand-500 outline-none font-normal"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </th>
+                      <th scope="col" className="px-3 py-2 text-left align-top relative">
+                        <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
                           <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('org')}>
                             Company <SortIcon columnKey="org" />
                           </div>
@@ -870,6 +904,7 @@ export default function LeadsPage() {
                           </>
                         )}
                       </th>
+
                       <th scope="col" className="px-3 py-2 text-left align-top">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded w-fit" onClick={() => handleSort('status')}>
                           Status <SortIcon columnKey="status" />
@@ -913,6 +948,9 @@ export default function LeadsPage() {
                           <div title={lead.title || ''}>{formatDesignation(lead.title)}</div>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
+                          {lead.function || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           {lead.org || '—'}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
@@ -921,6 +959,7 @@ export default function LeadsPage() {
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           {lead.industry || '—'}
                         </td>
+
                         <td className="px-3 py-3 ">
                           <div className="relative inline-block w-fit">
                             <select
@@ -938,14 +977,14 @@ export default function LeadsPage() {
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm">
-                          {lead.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium truncate w-40" title={lead.next_action}>{lead.next_action}</div>}
+                          {lead.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={lead.next_action}>{lead.next_action}</div>}
                           {lead.due_date && <div className={`text-xs mt-0.5 ${isUrgent(lead.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(lead.due_date).toLocaleDateString()}</div>}
                           {!lead.next_action && !lead.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
                         </td>
                         <td className="px-3 py-3 text-sm">
                           {lead.lead_activities && lead.lead_activities.length > 0 ? (
                             <div>
-                              <div className="text-gray-900 dark:text-gray-200 font-medium truncate w-32" title={formatUserName(lead.lead_activities[0].profiles?.full_name)}>
+                              <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={formatUserName(lead.lead_activities[0].profiles?.full_name)}>
                                 {formatUserName(lead.lead_activities[0].profiles?.full_name)}
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
@@ -960,7 +999,7 @@ export default function LeadsPage() {
                     ))}
                     {leads.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-3 py-12 text-center text-sm text-gray-500">
+                        <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
                           No leads found matching your search.
                         </td>
                       </tr>
@@ -1052,6 +1091,15 @@ export default function LeadsPage() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Function</label>
+              <input
+                placeholder="e.g. Sales"
+                value={functionField}
+                onChange={(e) => setFunctionField(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Status</label>
               <select
                 value={status}
@@ -1064,6 +1112,15 @@ export default function LeadsPage() {
                 <option value="Won">Won</option>
                 <option value="Lost">Lost</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Location</label>
+              <input
+                placeholder="e.g. Mumbai"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Revenue</label>
@@ -1175,7 +1232,7 @@ export default function LeadsPage() {
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
-                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.org || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'}
+                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.org || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1203,6 +1260,10 @@ export default function LeadsPage() {
                       <div className="text-sm text-gray-900 dark:text-gray-200">{expandedLead.location || '—'}</div>
                     </div>
                     <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Function</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200">{expandedLead.function || '—'}</div>
+                    </div>
+                    <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Revenue</div>
                       <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">
                         {expandedLead.revenue != null ? `${expandedLead.currency} ${expandedLead.revenue.toLocaleString()}` : '—'}
@@ -1219,11 +1280,13 @@ export default function LeadsPage() {
                         <input value={editForm.last_name || ''} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} placeholder="Last Name" className="text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/2 pb-1" />
                       </div>
                       <div className="flex items-center gap-3">
-                        <input value={editForm.title || ''} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} placeholder="Position" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/3 pb-1" />
+                        <input value={editForm.title || ''} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} placeholder="Position" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
-                        <input value={editForm.org || ''} onChange={(e) => setEditForm({ ...editForm, org: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/3 pb-1" />
+                        <input value={editForm.function || ''} onChange={(e) => setEditForm({ ...editForm, function: e.target.value })} placeholder="Function" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
-                        <input value={editForm.industry || ''} onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })} placeholder="Industry" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/3 pb-1" />
+                        <input value={editForm.org || ''} onChange={(e) => setEditForm({ ...editForm, org: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
+                        <span className="text-gray-400">&bull;</span>
+                        <input value={editForm.industry || ''} onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })} placeholder="Industry" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                       </div>
                     </div>
                     <div className="flex items-center gap-3 pl-4">
@@ -1247,6 +1310,10 @@ export default function LeadsPage() {
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Location</div>
                       <input value={editForm.location || ''} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Function</div>
+                      <input value={editForm.function || ''} onChange={(e) => setEditForm({ ...editForm, function: e.target.value })} className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500" />
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Revenue</div>
