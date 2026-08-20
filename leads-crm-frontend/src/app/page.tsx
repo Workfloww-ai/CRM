@@ -25,7 +25,14 @@ export default function Home() {
       return
     }
     setIsLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${siteUrl}/`
+      }
+    })
     setMessage(error ? `Error: ${error.message}` : 'Check your email to confirm signup!')
     setIsLoading(false)
   }

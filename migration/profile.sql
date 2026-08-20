@@ -1,8 +1,13 @@
+-- NOTE: This file reflects the CURRENT schema after migration.
+-- Original design used `role text check (role in ('admin','member'))`;
+-- migrated to `role_level smallint` (0 = member, 1 = admin) to allow
+-- adding tiers later without a schema change. See AGENTS.md decision log.
+
 create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
   email text not null,
-  role text not null default 'member' check (role in ('admin', 'member')),
+  role_level smallint not null default 0 check (role_level >= 0),
   created_at timestamptz not null default now()
 );
 

@@ -1,3 +1,4 @@
+from boto3 import client
 from db.client import supabase
 from typing import Optional
 from db.queries import (
@@ -41,6 +42,16 @@ import re
 app = FastAPI()
 
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={'Access-Control-Allow-Origin': '*'}
+    )
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import traceback
@@ -50,11 +61,8 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = [
-    "http://localhost:3000",
-    "https://crm.workfloww.ai",
-    "https://crm-git-main-workfloww.vercel.app",
-]
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://crm.workfloww.ai,https://crm-git-main-workfloww.vercel.app")
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,16 +108,18 @@ def get_leads(
     elif sort_by == "status":
         db_sort_by = "status"
 
-    response = get_leads_page(page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc)
+    client = get_client_for_user(user.token)
+    response = get_leads_page(client, page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc)
     return {"leads": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/leads")
 @limiter.limit("60/minute")
 def create_lead(request: Request, lead: LeadCreate, user=Depends(get_current_user)):
-    response = db_create_lead(lead.model_dump())
+    client = get_client_for_user(user.token)
+    response = db_create_lead(client, lead.model_dump())
     new_lead = response.data[0]
 
-    create_activity({
+    create_activity(client, {
         "lead_id": new_lead["id"],
         "user_id": user.id,
         "type": "created",
@@ -125,13 +135,14 @@ def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(g
     from datetime import datetime, timezone
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
+    client = get_client_for_user(user.token)
     if "status" in update_data:
-        old_lead = get_lead_status(lead_id)
+        old_lead = get_lead_status(client, lead_id)
         old_status = old_lead.data["status"]
         new_status = update_data["status"]
 
         if old_status != new_status:
-            create_activity({
+            create_activity(client, {
                 "lead_id": lead_id,
                 "user_id": user.id,
                 "type": "status_change",
@@ -139,31 +150,35 @@ def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(g
                 "metadata": {"from": old_status, "to": new_status},
             })
 
-    response = db_update_lead(lead_id, update_data)
+    response = db_update_lead(client, lead_id, update_data)
     return response.data
 
 @app.delete("/leads/{lead_id}")
 @limiter.limit("60/minute")
 def delete_lead(request: Request, lead_id: str, user=Depends(require_admin)):
-    response = db_delete_lead(lead_id)
+    client = get_client_for_user(user.token)
+    response = db_delete_lead(client, lead_id)
     return {"deleted": True, "id": lead_id}
 
 @app.get("/me")
 @limiter.limit("60/minute")
 def get_me(request: Request, user=Depends(get_current_user)):
-    profile = get_profile(user.id)
+    client = get_client_for_user(user.token)
+    profile = get_profile(client, user.id)
     return profile.data
 
 @app.get("/leads/{lead_id}/activities")
 @limiter.limit("60/minute")
 def get_lead_activities(request: Request, lead_id: str, user=Depends(get_current_user)):
-    response = db_get_lead_activities(lead_id)
+    client = get_client_for_user(user.token)
+    response = db_get_lead_activities(client, lead_id)
     return response.data
 
 @app.post("/leads/{lead_id}/notes")
 @limiter.limit("60/minute")
 def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
-    create_activity({
+    client = get_client_for_user(user.token)
+    create_activity(client, {
         "lead_id": lead_id,
         "user_id": user.id,
         "type": "note",
@@ -268,6 +283,7 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
                    f"or a LinkedIn export (needs at least: {sorted(LINKEDIN_REQUIRED_HEADERS)}). Got: {raw_headers}"
         )
 
+    client = get_client_for_user(user.token)
     def process_stream():
         imported = []
         errors = []
@@ -295,10 +311,10 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
             lead_data["first_name"] = first_name
             lead_data["status"] = status
 
-            result = db_create_lead(lead_data)
+            result = db_create_lead(client, lead_data)
             new_lead = result.data[0]
 
-            create_activity({
+            create_activity(client, {
                 "lead_id": new_lead["id"],
                 "user_id": user.id,
                 "type": "created",
@@ -315,6 +331,7 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
 
 @app.post("/leads/{lead_id}/attachments")
 def upload_attachment(lead_id: str, file: UploadFile = File(...), user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
     file_bytes = file.file.read()
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
     if len(file_bytes) > MAX_FILE_SIZE:
@@ -324,14 +341,14 @@ def upload_attachment(lead_id: str, file: UploadFile = File(...), user=Depends(g
 
     upload_file_to_storage(storage_path, file_bytes, file.content_type)
 
-    result = create_attachment_record({
+    result = create_attachment_record(client, {
         "lead_id": lead_id,
         "file_name": file.filename,
         "storage_path": storage_path,
         "uploaded_by": user.id,
     })
 
-    create_activity({
+    create_activity(client, {
         "lead_id": lead_id,
         "user_id": user.id,
         "type": "note",
@@ -343,13 +360,15 @@ def upload_attachment(lead_id: str, file: UploadFile = File(...), user=Depends(g
 
 @app.get("/leads/{lead_id}/attachments")
 def list_attachments(lead_id: str, user=Depends(get_current_user)):
-    response = get_lead_attachments(lead_id)
+    client = get_client_for_user(user.token)
+    response = get_lead_attachments(client, lead_id)
     return response.data
 
 
 @app.get("/attachments/{attachment_id}/download")
 def download_attachment(attachment_id: str, user=Depends(get_current_user)):
-    record = get_attachment(attachment_id)
+    client = get_client_for_user(user.token)
+    record = get_attachment(client, attachment_id)
     storage_path = record.data["storage_path"]
 
     signed_url = get_signed_attachment_url(storage_path)
@@ -359,11 +378,12 @@ def download_attachment(attachment_id: str, user=Depends(get_current_user)):
 
 @app.delete("/attachments/{attachment_id}")
 def delete_attachment(attachment_id: str, user=Depends(get_current_user)):
-    record = get_attachment(attachment_id)
+    client = get_client_for_user(user.token)
+    record = get_attachment(client, attachment_id)
     storage_path = record.data["storage_path"]
 
     delete_file_from_storage(storage_path)
-    delete_attachment_record(attachment_id)
+    delete_attachment_record(client, attachment_id)
 
     return {"deleted": True}
 
