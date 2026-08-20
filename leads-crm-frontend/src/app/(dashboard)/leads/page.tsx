@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type Lead = {
@@ -80,6 +80,27 @@ function formatUserName(fullName: string | null | undefined) {
   return fullName
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  
+  if (!text || text === '—') return null;
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0 focus:outline-none"
+      title="Copy to clipboard"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  )
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,6 +112,7 @@ export default function LeadsPage() {
   const [title, setTitle] = useState('')
   const [org, setOrg] = useState('')
   const [nextAction, setNextAction] = useState('')
+  const [linkedin, setLinkedin] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [industry, setIndustry] = useState('')
   const [status, setStatus] = useState('New')
@@ -103,6 +125,15 @@ export default function LeadsPage() {
   const [functionField, setFunctionField] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const q = urlParams.get('search')
+      if (q && search === '') setSearch(q)
+    }
+  }, [])
+
+
   const [nameFilter, setNameFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState('')
   const [designationFilter, setDesignationFilter] = useState('')
@@ -112,6 +143,18 @@ export default function LeadsPage() {
   const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && leads.length > 0 && expandedLeadId === null) {
+      const urlParams = new URLSearchParams(window.location.search)
+      const id = urlParams.get('id')
+      if (id && leads.some(l => l.id === id)) {
+        setExpandedLeadId(id)
+        window.history.replaceState({}, '', '/leads')
+      }
+    }
+  }, [leads, expandedLeadId])
+
   const [activities, setActivities] = useState<Activity[]>([])
   const [importResult, setImportResult] = useState<{ imported_count: number; errors: string[] } | null>(null)
   const [importProgress, setImportProgress] = useState<{ processed: number, total: number, percentage: number } | null>(null)
@@ -292,6 +335,7 @@ export default function LeadsPage() {
         phone,
         phone_2: phone2,
         email,
+        linkedin,
         next_action: nextAction,
         due_date: dueDate || null,
         revenue: revenue ? Number(revenue) : null,
@@ -305,6 +349,7 @@ export default function LeadsPage() {
       setTitle('')
       setOrg('')
       setNextAction('')
+      setLinkedin('')
       setDueDate('')
       setIndustry('')
       setStatus('New')
@@ -613,6 +658,19 @@ export default function LeadsPage() {
 
   const expandedLead = leads.find(l => l.id === expandedLeadId)
 
+  const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null;
+
+  const handleResetFiltersAndSort = () => {
+    setSearch('')
+    setNameFilter('')
+    setCompanyFilter('')
+    setDesignationFilter('')
+    setLocationFilter('')
+    setIndustryFilter('')
+    setFunctionFilter('')
+    setSortConfig({ key: null, direction: 'asc' })
+  }
+
   return (
     <>
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -626,35 +684,6 @@ export default function LeadsPage() {
               <Menu className="w-5 h-5" />
             </button>
             <h1 className="text-xl font-semibold">Leads</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-            {/* <button
-              onClick={handleDownloadTemplate}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-              title="Download a blank Excel template with a status dropdown"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              Template
-            </button> */}
-            <label className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4" />
-              Import
-              <input type="file" accept=".csv,.xlsx" onChange={handleImport} className="hidden" />
-            </label>
-            <button
-              onClick={() => setIsAddLeadModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-brand-600 border border-transparent rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Lead
-            </button>
           </div>
         </header>
 
@@ -688,25 +717,58 @@ export default function LeadsPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1">
-                  <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    placeholder="Search by name, org, or title..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors outline-none text-sm shadow-sm"
-                  />
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="relative w-80">
+                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      placeholder="Search by name, org, or title..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors outline-none text-sm shadow-sm"
+                    />
+                  </div>
+                  {hasActiveFiltersOrSort && (
+                    <button
+                      onClick={handleResetFiltersAndSort}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 bg-gray-100 dark:bg-neutral-800 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      Reset
+                    </button>
+                  )}
                 </div>
-                {selectedLeads.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
+                
+                <div className="flex items-center gap-3">
+                  {selectedLeads.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
+                    <button
+                      onClick={handleBulkDelete}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm whitespace-nowrap"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete ({selectedLeads.length})
+                    </button>
+                  ) : null}
                   <button
-                    onClick={handleBulkDelete}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm whitespace-nowrap"
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Delete ({selectedLeads.length})
+                    <Download className="w-4 h-4" />
+                    Export
                   </button>
-                ) : null}
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    Import
+                    <input type="file" accept=".csv,.xlsx" onChange={handleImport} className="hidden" />
+                  </label>
+                  <button
+                    onClick={() => setIsAddLeadModalOpen(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-brand-600 border border-transparent rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Lead
+                  </button>
+                </div>
               </div>
 
             </div>
@@ -1174,6 +1236,16 @@ export default function LeadsPage() {
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
               />
             </div>
+            
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">LinkedIn URL</label>
+              <input
+                placeholder="https://linkedin.com/in/..."
+                value={linkedin}
+                onChange={(e) => setLinkedin(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Next Action</label>
@@ -1227,7 +1299,7 @@ export default function LeadsPage() {
           {expandedLead && (
             <div className="p-8">
               {!isEditingContact ? (
-                <>
+                <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 mb-10 shadow-sm relative">
                   <div className="flex items-start justify-between mb-8">
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
@@ -1245,23 +1317,34 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-y-6 gap-x-8 mb-8 border-b border-gray-100 dark:border-neutral-800 pb-8">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-y-6 gap-x-8">
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Email</div>
-                      <div className="text-sm text-gray-900 dark:text-gray-200 font-mono">{expandedLead.email || '—'}</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200 font-mono break-all flex items-center">
+                        {expandedLead.email || '—'}
+                        {expandedLead.email && <CopyButton text={expandedLead.email} />}
+                      </div>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Phone</div>
-                      <div className="text-sm font-mono text-gray-900 dark:text-gray-200">{expandedLead.phone || '—'}</div>
-                      {expandedLead.phone_2 && <div className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-1">{expandedLead.phone_2}</div>}
+                      <div className="text-sm font-mono text-gray-900 dark:text-gray-200 break-all flex items-center">
+                        {expandedLead.phone || '—'}
+                        {expandedLead.phone && <CopyButton text={expandedLead.phone} />}
+                      </div>
+                      {expandedLead.phone_2 && (
+                        <div className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-1 break-all flex items-center">
+                          {expandedLead.phone_2}
+                          <CopyButton text={expandedLead.phone_2} />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Location</div>
-                      <div className="text-sm text-gray-900 dark:text-gray-200">{expandedLead.location || '—'}</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200 break-words">{expandedLead.location || '—'}</div>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Function</div>
-                      <div className="text-sm text-gray-900 dark:text-gray-200">{expandedLead.function || '—'}</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200 break-words">{expandedLead.function || '—'}</div>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Revenue</div>
@@ -1269,10 +1352,20 @@ export default function LeadsPage() {
                         {expandedLead.revenue != null ? `${expandedLead.currency} ${expandedLead.revenue.toLocaleString()}` : '—'}
                       </div>
                     </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">LinkedIn</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200 break-words">
+                        {expandedLead.linkedin ? (
+                          <a href={expandedLead.linkedin.startsWith('http') ? expandedLead.linkedin : `https://${expandedLead.linkedin}`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+                            {expandedLead.linkedin}
+                          </a>
+                        ) : '—'}
+                      </div>
+                    </div>
                   </div>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 mb-10 shadow-sm relative">
                   <div className="flex items-start justify-between mb-8">
                     <div className="w-full max-w-lg space-y-3">
                       <div className="flex gap-3">
@@ -1295,7 +1388,7 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-y-6 gap-x-8 mb-8 border-b border-gray-100 dark:border-neutral-800 pb-8">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-y-6 gap-x-8">
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Email</div>
                       <input value={editForm.email || ''} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500" />
@@ -1336,8 +1429,12 @@ export default function LeadsPage() {
                         />
                       </div>
                     </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">LinkedIn URL</div>
+                      <input value={editForm.linkedin || ''} onChange={(e) => setEditForm({ ...editForm, linkedin: e.target.value })} placeholder="https://linkedin.com/in/..." className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500" />
+                    </div>
                   </div>
-                </>
+                </div>
               )}
 
               <form onSubmit={(e) => handleQuickActionSubmit(expandedLead.id, e)} className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 mb-10 shadow-sm relative overflow-hidden group">
@@ -1348,7 +1445,7 @@ export default function LeadsPage() {
                     {isSavingContact ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Updates
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-4">
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Status</label>
                     <select
@@ -1364,15 +1461,6 @@ export default function LeadsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Next Action</label>
-                    <input
-                      name="next_action"
-                      defaultValue={expandedLead.next_action || ''}
-                      placeholder="e.g. Follow up email"
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg text-sm text-gray-900 dark:text-white focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Due Date</label>
                     <input
                       name="due_date"
@@ -1382,7 +1470,65 @@ export default function LeadsPage() {
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Next Action</label>
+                  <textarea
+                    name="next_action"
+                    rows={2}
+                    defaultValue={expandedLead.next_action || ''}
+                    placeholder="e.g. Follow up email"
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg text-sm text-gray-900 dark:text-white focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm resize-y"
+                  />
+                </div>
               </form>
+              <div className="mb-8 p-5 bg-brand-50/50 dark:bg-brand-900/10 border border-brand-100 dark:border-brand-900/30 rounded-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-brand-900 dark:text-brand-100 flex items-center gap-2">
+                    <File className="w-4 h-4 text-brand-500" /> Attachments
+                  </h3>
+                  <label className="cursor-pointer text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 bg-white dark:bg-neutral-900 px-3 py-1.5 rounded-md border border-gray-200 dark:border-neutral-800 shadow-sm transition-colors">
+                    Upload
+                    <input
+                      type="file"
+                      onChange={(e) => expandedLeadId && handleUploadAttachment(expandedLeadId, e)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  {attachments.length === 0 && (
+                    <p className="text-sm text-gray-500 italic">No attachments.</p>
+                  )}
+                  {attachments.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg group shadow-sm hover:border-brand-300 transition-colors">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <File className="w-4 h-4 text-brand-400 shrink-0" />
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate" title={a.file_name}>{a.file_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleDownloadAttachment(a.id)}
+                          className="text-gray-400 hover:text-brand-600 transition-colors p-1"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                        {profile?.role_level && profile.role_level >= 1 && (
+                          <button
+                            onClick={() => expandedLeadId && handleDeleteAttachment(a.id, expandedLeadId)}
+                            className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 {/* <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <History className="w-4 h-4 text-gray-400" /> Activity Timeline
@@ -1425,54 +1571,6 @@ export default function LeadsPage() {
                         <span className="font-medium text-gray-900 dark:text-white">{formatUserName(a.profiles?.full_name)}</span>{' '}
                         <span className="text-gray-600 dark:text-gray-400">{a.content}</span>
                       </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                    <File className="w-4 h-4 text-gray-400" /> Attachments
-                  </h3>
-                  <label className="cursor-pointer text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300">
-                    Upload
-                    <input
-                      type="file"
-                      onChange={(e) => expandedLeadId && handleUploadAttachment(expandedLeadId, e)}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                <div className="space-y-2">
-                  {attachments.length === 0 && (
-                    <p className="text-sm text-gray-500 italic">No attachments.</p>
-                  )}
-                  {attachments.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-neutral-800/50 border border-gray-100 dark:border-neutral-800 rounded-lg group">
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <File className="w-4 h-4 text-gray-400 shrink-0" />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate" title={a.file_name}>{a.file_name}</span>
-                      </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => handleDownloadAttachment(a.id)}
-                          className="text-gray-400 hover:text-brand-600 transition-colors p-1"
-                          title="Download"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                        {profile?.role_level && profile.role_level >= 1 && (
-                          <button
-                            onClick={() => expandedLeadId && handleDeleteAttachment(a.id, expandedLeadId)}
-                            className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </div>
