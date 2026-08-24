@@ -39,3 +39,5 @@ jobs:
           flags: '--allow-unauthenticated'
           env_vars: |
             ENVIRONMENT=production
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
