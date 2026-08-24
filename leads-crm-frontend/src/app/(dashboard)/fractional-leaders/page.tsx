@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
-type Lead = {
+type FractionalLeader = {
   id: string
   first_name: string
   last_name: string | null
   title: string | null
-  org: string | null
+  domain: string | null
   industry: string | null
   function: string | null
   email: string | null
@@ -26,7 +26,7 @@ type Lead = {
   due_date: string | null
   revenue?: number | null
   currency?: string | null
-  lead_activities?: { created_at: string, profiles: { full_name: string } | null }[]
+  fractional_leader_activities?: { created_at: string, profiles: { full_name: string } | null }[]
 }
 
 function isUrgent(dueDateStr: string | null) {
@@ -59,8 +59,8 @@ type Attachment = {
   profiles: { full_name: string } | null
 }
 
-function fullName(lead: Lead) {
-  return [lead.first_name, lead.last_name].filter(Boolean).join(' ')
+function fullName(leader: FractionalLeader) {
+  return [leader.first_name, leader.last_name].filter(Boolean).join(' ')
 }
 
 function formatDesignation(title: string | null) {
@@ -101,11 +101,11 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>([])
+export default function FractionalLeadersPage() {
+  const [leaders, setLeaders] = useState<FractionalLeader[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false)
+  const [isAddLeaderModalOpen, setIsAddLeaderModalOpen] = useState(false)
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -142,29 +142,29 @@ export default function LeadsPage() {
   const [locationFilter, setLocationFilter] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
   const [functionFilter, setFunctionFilter] = useState('')
-  const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | 'function' | null>(null)
+  const [openFilter, setOpenFilter] = useState<'name' | 'domain' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
+  const [expandedLeaderId, setExpandedLeaderId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && leads.length > 0 && expandedLeadId === null) {
+    if (typeof window !== 'undefined' && leaders.length > 0 && expandedLeaderId === null) {
       const urlParams = new URLSearchParams(window.location.search)
       const id = urlParams.get('id')
-      if (id && leads.some(l => l.id === id)) {
-        setExpandedLeadId(id)
+      if (id && leaders.some(l => l.id === id)) {
+        setExpandedLeaderId(id)
         window.history.replaceState({}, '', '/leads')
       }
     }
-  }, [leads, expandedLeadId])
+  }, [leaders, expandedLeaderId])
 
   const [activities, setActivities] = useState<Activity[]>([])
   const [importResult, setImportResult] = useState<{ imported_count: number; errors: string[] } | null>(null)
   const [importProgress, setImportProgress] = useState<{ processed: number, total: number, percentage: number } | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'org' | 'status' | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
+  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'domain' | 'status' | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
 
   const [isEditingContact, setIsEditingContact] = useState(false)
-  const [editForm, setEditForm] = useState<Partial<Lead>>({})
+  const [editForm, setEditForm] = useState<Partial<FractionalLeader>>({})
   const [isSavingContact, setIsSavingContact] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [isPostingComment, setIsPostingComment] = useState(false)
@@ -175,11 +175,11 @@ export default function LeadsPage() {
     return data.session?.access_token
   }
   const [page, setPage] = useState(1)
-  const [totalLeads, setTotalLeads] = useState(0)
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
+  const [totalLeaders, setTotalLeaders] = useState(0)
+  const [selectedLeaders, setSelectedLeaders] = useState<string[]>([])
   const pageSize = 20
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeaders = useCallback(async () => {
     const token = await getToken()
     if (!token) {
       setError('Not logged in')
@@ -192,7 +192,7 @@ export default function LeadsPage() {
     params.set('page_size', pageSize.toString())
     if (search) params.set('search', search)
     if (nameFilter) params.set('name', nameFilter)
-    if (companyFilter) params.set('org', companyFilter)
+    if (companyFilter) params.set('domain', companyFilter)
     if (designationFilter) params.set('title', designationFilter)
     if (locationFilter) params.set('location', locationFilter)
     if (industryFilter) params.set('industry', industryFilter)
@@ -202,7 +202,7 @@ export default function LeadsPage() {
       params.set('sort_dir', sortConfig.direction)
     }
 
-    const res = await fetch(`${API_URL}/leads?${params.toString()}`, {
+    const res = await fetch(`${API_URL}/fractional-leaders?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -213,8 +213,8 @@ export default function LeadsPage() {
     }
 
     const data = await res.json()
-    setLeads(data.leads)
-    setTotalLeads(data.total)
+    setLeaders(data.data)
+    setTotalLeaders(data.total)
     setLoading(false)
   }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
 
@@ -232,32 +232,32 @@ export default function LeadsPage() {
     }
   }
 
-  async function toggleActivities(leadId: string) {
-    if (expandedLeadId === leadId) {
-      setExpandedLeadId(null)
+  async function toggleActivities(leaderId: string) {
+    if (expandedLeaderId === leaderId) {
+      setExpandedLeaderId(null)
       return
     }
 
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/activities`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}/activities`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
     if (res.ok) {
       const data = await res.json()
       setActivities(data)
-      setExpandedLeadId(leadId)
-      fetchAttachments(leadId)
+      setExpandedLeaderId(leaderId)
+      fetchAttachments(leaderId)
     }
   }
 
-  async function fetchAttachments(leadId: string) {
+  async function fetchAttachments(leaderId: string) {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/attachments`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}/attachments`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -267,7 +267,7 @@ export default function LeadsPage() {
     }
   }
 
-  async function handleUploadAttachment(leadId: string, e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadAttachment(leaderId: string, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -277,13 +277,13 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    await fetch(`${API_URL}/leads/${leadId}/attachments`, {
+    await fetch(`${API_URL}/fractional-leaders/${leaderId}/attachments`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     })
 
-    fetchAttachments(leadId)
+    fetchAttachments(leaderId)
     e.target.value = ''
   }
 
@@ -299,7 +299,7 @@ export default function LeadsPage() {
     window.open(data.url, '_blank')
   }
 
-  async function handleDeleteAttachment(attachmentId: string, leadId: string) {
+  async function handleDeleteAttachment(attachmentId: string, leaderId: string) {
     const confirmed = confirm('Delete this attachment?')
     if (!confirmed) return
 
@@ -311,7 +311,7 @@ export default function LeadsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
 
-    fetchAttachments(leadId)
+    fetchAttachments(leaderId)
   }
 
   async function handleAddLead(e: React.FormEvent) {
@@ -319,7 +319,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads`, {
+    const res = await fetch(`${API_URL}/fractional-leaders`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -362,8 +362,8 @@ export default function LeadsPage() {
       setEmail('')
       setLocation('')
       setFunctionField('')
-      setIsAddLeadModalOpen(false)
-      fetchLeads()
+      setIsAddLeaderModalOpen(false)
+      fetchLeaders()
     }
   }
 
@@ -373,20 +373,20 @@ export default function LeadsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchLeads()
+      fetchLeaders()
     }, 300)
     return () => clearTimeout(timer)
-  }, [fetchLeads])
+  }, [fetchLeaders])
 
   useEffect(() => {
     fetchProfile()
   }, [])
 
-  async function handleStatusChange(leadId: string, newStatus: string) {
+  async function handleStatusChange(leaderId: string, newStatus: string) {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -395,14 +395,14 @@ export default function LeadsPage() {
       body: JSON.stringify({ status: newStatus }),
     })
 
-    fetchLeads()
+    fetchLeaders()
   }
 
-  async function handleFieldUpdate(leadId: string, field: string, value: string) {
+  async function handleFieldUpdate(leaderId: string, field: string, value: string) {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -410,10 +410,10 @@ export default function LeadsPage() {
       },
       body: JSON.stringify({ [field]: value || null }),
     })
-    fetchLeads()
+    fetchLeaders()
   }
 
-  async function handleUpdateContact(leadId: string) {
+  async function handleUpdateContact(leaderId: string) {
     setIsSavingContact(true)
     const token = await getToken()
     if (!token) {
@@ -421,7 +421,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -431,14 +431,14 @@ export default function LeadsPage() {
     })
 
     if (res.ok) {
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...editForm } as Lead : l))
+      setLeaders(prev => prev.map(l => l.id === leaderId ? { ...l, ...editForm } as FractionalLeader : l))
       setIsEditingContact(false)
-      fetchLeads()
+      fetchLeaders()
     }
     setIsSavingContact(false)
   }
 
-  async function handleQuickActionSubmit(leadId: string, e: React.FormEvent<HTMLFormElement>) {
+  async function handleQuickActionSubmit(leaderId: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSavingContact(true)
     const formData = new FormData(e.currentTarget)
@@ -458,7 +458,7 @@ export default function LeadsPage() {
       due_date: due_date || null
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -468,13 +468,13 @@ export default function LeadsPage() {
     })
 
     if (res.ok) {
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...payload } as Lead : l))
-      fetchLeads()
+      setLeaders(prev => prev.map(l => l.id === leaderId ? { ...l, ...payload } as FractionalLeader : l))
+      fetchLeaders()
     }
     setIsSavingContact(false)
   }
 
-  async function handleAddComment(leadId: string, e: React.FormEvent) {
+  async function handleAddComment(leaderId: string, e: React.FormEvent) {
     e.preventDefault()
     if (!commentText.trim()) return
 
@@ -485,7 +485,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/notes`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}/notes`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -496,7 +496,7 @@ export default function LeadsPage() {
 
     if (res.ok) {
       setCommentText('')
-      const actsRes = await fetch(`${API_URL}/leads/${leadId}/activities`, {
+      const actsRes = await fetch(`${API_URL}/fractional-leaders/${leaderId}/activities`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (actsRes.ok) {
@@ -507,38 +507,38 @@ export default function LeadsPage() {
     setIsPostingComment(false)
   }
 
-  async function handleDelete(leadId: string) {
-    const confirmed = confirm('Delete this lead? This cannot be undone.')
+  async function handleDelete(leaderId: string) {
+    const confirmed = confirm('Delete this leader? This cannot be undone.')
     if (!confirmed) return
 
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
 
-    fetchLeads()
+    fetchLeaders()
   }
 
   async function handleBulkDelete() {
-    if (selectedLeads.length === 0) return
-    const confirmed = confirm(`Delete ${selectedLeads.length} leads? This cannot be undone.`)
+    if (selectedLeaders.length === 0) return
+    const confirmed = confirm(`Delete ${selectedLeaders.length} leads? This cannot be undone.`)
     if (!confirmed) return
 
     const token = await getToken()
     if (!token) return
 
-    await Promise.all(selectedLeads.map(leadId =>
-      fetch(`${API_URL}/leads/${leadId}`, {
+    await Promise.all(selectedLeaders.map(leaderId =>
+      fetch(`${API_URL}/fractional-leaders/${leaderId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
     ))
 
-    setSelectedLeads([])
-    fetchLeads()
+    setSelectedLeaders([])
+    fetchLeaders()
   }
 
   function handleExport() {
@@ -550,7 +550,7 @@ export default function LeadsPage() {
     if (!token) return
 
     const exportTypesQuery = exportTypes.join(',')
-    const urlStr = exportTypesQuery ? `${API_URL}/leads/export?export_type=${exportTypesQuery}` : `${API_URL}/leads/export`
+    const urlStr = exportTypesQuery ? `${API_URL}/fractional-leaders/export?export_type=${exportTypesQuery}` : `${API_URL}/fractional-leaders/export`
     
     const res = await fetch(urlStr, {
       headers: { Authorization: `Bearer ${token}` },
@@ -570,7 +570,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/import-template-xlsx`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/import-template-xlsx`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -593,7 +593,7 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const res = await fetch(`${API_URL}/leads/import`, {
+    const res = await fetch(`${API_URL}/fractional-leaders/import`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
@@ -631,7 +631,7 @@ export default function LeadsPage() {
           } else if (data.type === 'complete') {
             setImportProgress(null)
             setImportResult({ imported_count: data.imported_count, errors: data.errors })
-            fetchLeads()
+            fetchLeaders()
           }
         } catch (err) {
           console.error('Failed to parse NDJSON line', line)
@@ -642,7 +642,7 @@ export default function LeadsPage() {
     e.target.value = '' // reset the file input so the same file can be re-selected if needed
   }
 
-  const handleSort = (key: 'name' | 'org' | 'status') => {
+  const handleSort = (key: 'name' | 'domain' | 'status') => {
     let direction: 'asc' | 'desc' = 'asc'
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc'
@@ -650,7 +650,7 @@ export default function LeadsPage() {
     setSortConfig({ key, direction })
   }
 
-  const SortIcon = ({ columnKey }: { columnKey: 'name' | 'org' | 'status' }) => {
+  const SortIcon = ({ columnKey }: { columnKey: 'name' | 'domain' | 'status' }) => {
     if (sortConfig.key !== columnKey) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-50" />
     return sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />
   }
@@ -666,7 +666,7 @@ export default function LeadsPage() {
     </main>
   )
 
-  const expandedLead = leads.find(l => l.id === expandedLeadId)
+  const expandedLead = leaders.find(l => l.id === expandedLeaderId)
 
   const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null;
 
@@ -693,7 +693,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Leads</h1>
+            <h1 className="text-xl font-semibold">Fractional Leaders</h1>
           </div>
         </header>
 
@@ -750,13 +750,13 @@ export default function LeadsPage() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  {selectedLeads.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
+                  {selectedLeaders.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
                     <button
                       onClick={handleBulkDelete}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm whitespace-nowrap"
                     >
                       <Trash2 className="w-4 h-4" />
-                      Delete ({selectedLeads.length})
+                      Delete ({selectedLeaders.length})
                     </button>
                   ) : null}
                   <div className="relative">
@@ -813,11 +813,11 @@ export default function LeadsPage() {
                     <input type="file" accept=".csv,.xlsx" onChange={handleImport} className="hidden" />
                   </label>
                   <button
-                    onClick={() => setIsAddLeadModalOpen(true)}
+                    onClick={() => setIsAddLeaderModalOpen(true)}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-brand-600 border border-transparent rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    Add Lead
+                    Add Fractional Leader
                   </button>
                 </div>
               </div>
@@ -832,12 +832,12 @@ export default function LeadsPage() {
                       <th scope="col" className="w-12 px-3 py-2 text-left align-top">
                         <input
                           type="checkbox"
-                          checked={leads.length > 0 && selectedLeads.length === leads.length}
+                          checked={leaders.length > 0 && selectedLeaders.length === leaders.length}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedLeads(leads.map(l => l.id))
+                              setSelectedLeaders(leaders.map(l => l.id))
                             } else {
-                              setSelectedLeads([])
+                              setSelectedLeaders([])
                             }
                           }}
                           className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
@@ -901,49 +901,21 @@ export default function LeadsPage() {
                           </>
                         )}
                       </th>
+                      
                       <th scope="col" className="px-3 py-2 text-left align-top relative">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="p-1 -ml-1 flex items-center">
-                            Function
+                          <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('domain')}>
+                            Domain <SortIcon columnKey="domain" />
                           </div>
                           <button
-                            onClick={() => setOpenFilter(openFilter === 'function' ? null : 'function')}
-                            className={`ml-1 p-1 rounded transition-colors ${functionFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
-                          >
-                            <Filter className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {openFilter === 'function' && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
-                            <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
-                              <input
-                                autoFocus
-                                type="text"
-                                placeholder="Filter function..."
-                                value={functionFilter}
-                                onChange={(e) => setFunctionFilter(e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-md focus:ring-2 focus:ring-brand-500 outline-none font-normal"
-                              />
-                            </div>
-                          </>
-                        )}
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-left align-top relative">
-                        <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('org')}>
-                            Company <SortIcon columnKey="org" />
-                          </div>
-                          <button
-                            onClick={() => setOpenFilter(openFilter === 'org' ? null : 'org')}
+                            onClick={() => setOpenFilter(openFilter === 'domain' ? null : 'domain')}
                             className={`ml-1 p-1 rounded transition-colors ${companyFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
                           >
                             <Filter className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {openFilter === 'org' && (
+                        {openFilter === 'domain' && (
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
                             <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
@@ -988,35 +960,7 @@ export default function LeadsPage() {
                           </>
                         )}
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left align-top relative">
-                        <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="p-1 -ml-1 flex items-center">
-                            Industry
-                          </div>
-                          <button
-                            onClick={() => setOpenFilter(openFilter === 'industry' ? null : 'industry')}
-                            className={`ml-1 p-1 rounded transition-colors ${industryFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
-                          >
-                            <Filter className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {openFilter === 'industry' && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
-                            <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
-                              <input
-                                autoFocus
-                                type="text"
-                                placeholder="Filter industry..."
-                                value={industryFilter}
-                                onChange={(e) => setIndustryFilter(e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-md focus:ring-2 focus:ring-brand-500 outline-none font-normal"
-                              />
-                            </div>
-                          </>
-                        )}
-                      </th>
+                      
 
                       <th scope="col" className="px-3 py-2 text-left align-top">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded w-fit" onClick={() => handleSort('status')}>
@@ -1036,48 +980,44 @@ export default function LeadsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
-                    {leads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors group">
+                    {leaders.map((leader) => (
+                      <tr key={leader.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors group">
                         <td className="px-3 py-3 ">
                           <input
                             type="checkbox"
-                            checked={selectedLeads.includes(lead.id)}
+                            checked={selectedLeaders.includes(leader.id)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedLeads([...selectedLeads, lead.id])
+                                setSelectedLeaders([...selectedLeaders, leader.id])
                               } else {
-                                setSelectedLeads(selectedLeads.filter(id => id !== lead.id))
+                                setSelectedLeaders(selectedLeaders.filter(id => id !== leader.id))
                               }
                             }}
                             className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                           />
                         </td>
                         <td className="px-3 py-3 ">
-                          <button onClick={() => toggleActivities(lead.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
-                            {fullName(lead)}
+                          <button onClick={() => toggleActivities(leader.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+                            {fullName(leader)}
                           </button>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          <div title={lead.title || ''}>{formatDesignation(lead.title)}</div>
+                          <div title={leader.title || ''}>{formatDesignation(leader.title)}</div>
+                        </td>
+                        
+                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
+                          {leader.domain || '—'}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.function || '—'}
+                          {leader.location || '—'}
                         </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.org || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.location || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.industry || '—'}
-                        </td>
+                        
 
                         <td className="px-3 py-3 ">
                           <div className="relative inline-block w-fit">
                             <select
-                              value={lead.status}
-                              onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                              value={leader.status}
+                              onChange={(e) => handleStatusChange(leader.id, e.target.value)}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             >
                               <option>New</option>
@@ -1086,22 +1026,22 @@ export default function LeadsPage() {
                               <option>Won</option>
                               <option>Lost</option>
                             </select>
-                            <Badge status={lead.status} />
+                            <Badge status={leader.status} />
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm">
-                          {lead.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={lead.next_action}>{lead.next_action}</div>}
-                          {lead.due_date && <div className={`text-xs mt-0.5 ${isUrgent(lead.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(lead.due_date).toLocaleDateString()}</div>}
-                          {!lead.next_action && !lead.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
+                          {leader.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={leader.next_action}>{leader.next_action}</div>}
+                          {leader.due_date && <div className={`text-xs mt-0.5 ${isUrgent(leader.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(leader.due_date).toLocaleDateString()}</div>}
+                          {!leader.next_action && !leader.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
                         </td>
                         <td className="px-3 py-3 text-sm">
-                          {lead.lead_activities && lead.lead_activities.length > 0 ? (
+                          {leader.fractional_leader_activities && leader.fractional_leader_activities.length > 0 ? (
                             <div>
-                              <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={formatUserName(lead.lead_activities[0].profiles?.full_name)}>
-                                {formatUserName(lead.lead_activities[0].profiles?.full_name)}
+                              <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={formatUserName(leader.fractional_leader_activities[0].profiles?.full_name)}>
+                                {formatUserName(leader.fractional_leader_activities[0].profiles?.full_name)}
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                {new Date(lead.lead_activities[0].created_at).toLocaleDateString()}
+                                {new Date(leader.fractional_leader_activities[0].created_at).toLocaleDateString()}
                               </div>
                             </div>
                           ) : (
@@ -1110,7 +1050,7 @@ export default function LeadsPage() {
                         </td>
                       </tr>
                     ))}
-                    {leads.length === 0 && (
+                    {leaders.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
                           No leads found matching your search.
@@ -1123,7 +1063,7 @@ export default function LeadsPage() {
 
               <div className="border-t border-gray-200 dark:border-neutral-800 px-3 py-2 flex items-center justify-between bg-gray-50 dark:bg-neutral-900/50 shrink-0">
                 <div className="text-sm text-gray-500">
-                  Page <span className="font-medium">{page}</span> of <span className="font-medium">{Math.max(1, Math.ceil(totalLeads / pageSize))}</span>
+                  Page <span className="font-medium">{page}</span> of <span className="font-medium">{Math.max(1, Math.ceil(totalLeaders / pageSize))}</span>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1134,7 +1074,7 @@ export default function LeadsPage() {
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    disabled={page >= Math.ceil(totalLeads / pageSize)}
+                    disabled={page >= Math.ceil(totalLeaders / pageSize)}
                     onClick={() => setPage(page + 1)}
                     className="p-1 rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-700 disabled:opacity-50 transition-colors"
                   >
@@ -1148,70 +1088,15 @@ export default function LeadsPage() {
       </main>
 
       <Modal
-        isOpen={isAddLeadModalOpen}
-        onClose={() => setIsAddLeadModalOpen(false)}
+        isOpen={isAddLeaderModalOpen}
+        onClose={() => setIsAddLeaderModalOpen(false)}
         title="Add New Lead"
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleAddLead} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">First Name *</label>
-              <input
-                placeholder="e.g. Jane"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Last Name</label>
-              <input
-                placeholder="e.g. Doe"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Title</label>
-              <input
-                placeholder="e.g. CEO"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Organization</label>
-              <input
-                placeholder="e.g. Acme Corp"
-                value={org}
-                onChange={(e) => setOrg(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Industry</label>
-              <input
-                placeholder="e.g. Technology"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Function</label>
-              <input
-                placeholder="e.g. Sales"
-                value={functionField}
-                onChange={(e) => setFunctionField(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
+            
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Status</label>
               <select
@@ -1321,7 +1206,7 @@ export default function LeadsPage() {
           <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800">
             <button
               type="button"
-              onClick={() => setIsAddLeadModalOpen(false)}
+              onClick={() => setIsAddLeaderModalOpen(false)}
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded-lg transition-colors border border-gray-200 dark:border-neutral-700"
             >
               Cancel
@@ -1337,9 +1222,9 @@ export default function LeadsPage() {
       </Modal>
 
       <Modal
-        isOpen={expandedLeadId !== null}
+        isOpen={expandedLeaderId !== null}
         onClose={() => {
-          setExpandedLeadId(null)
+          setExpandedLeaderId(null)
           setIsEditingContact(false)
         }}
         title=""
@@ -1355,14 +1240,14 @@ export default function LeadsPage() {
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
-                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.org || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
+                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.domain || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setEditForm(expandedLead); setIsEditingContact(true); }} className="text-brand-600 hover:text-brand-700 hover:bg-brand-50 transition-colors p-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium mr-2">
                         <Edit2 className="w-4 h-4" /> Edit
                       </button>
-                      <button onClick={() => { setExpandedLeadId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
+                      <button onClick={() => { setExpandedLeaderId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
@@ -1428,7 +1313,7 @@ export default function LeadsPage() {
                         <span className="text-gray-400">&bull;</span>
                         <input value={editForm.function || ''} onChange={(e) => setEditForm({ ...editForm, function: e.target.value })} placeholder="Function" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
-                        <input value={editForm.org || ''} onChange={(e) => setEditForm({ ...editForm, org: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
+                        <input value={editForm.domain || ''} onChange={(e) => setEditForm({ ...editForm, domain: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
                         <input value={editForm.industry || ''} onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })} placeholder="Industry" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                       </div>
@@ -1541,7 +1426,7 @@ export default function LeadsPage() {
                     Upload
                     <input
                       type="file"
-                      onChange={(e) => expandedLeadId && handleUploadAttachment(expandedLeadId, e)}
+                      onChange={(e) => expandedLeaderId && handleUploadAttachment(expandedLeaderId, e)}
                       className="hidden"
                     />
                   </label>
@@ -1567,7 +1452,7 @@ export default function LeadsPage() {
                         </button>
                         {profile?.role_level && profile.role_level >= 1 && (
                           <button
-                            onClick={() => expandedLeadId && handleDeleteAttachment(a.id, expandedLeadId)}
+                            onClick={() => expandedLeaderId && handleDeleteAttachment(a.id, expandedLeaderId)}
                             className="text-gray-400 hover:text-red-600 transition-colors p-1"
                             title="Delete"
                           >
@@ -1585,8 +1470,8 @@ export default function LeadsPage() {
               <History className="w-4 h-4 text-gray-400" /> Activity Timeline
             </h3> */}
 
-                {/* {expandedLeadId && (
-              <form onSubmit={(e) => handleAddComment(expandedLeadId, e)} className="mb-6">
+                {/* {expandedLeaderId && (
+              <form onSubmit={(e) => handleAddComment(expandedLeaderId, e)} className="mb-6">
                 <div className="relative">
                   <textarea
                     value={commentText}
