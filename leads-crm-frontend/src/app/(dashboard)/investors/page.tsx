@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/Badge'
 import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
-type Lead = {
+type Investor = {
   id: string
   first_name: string
   last_name: string | null
   title: string | null
-  org: string | null
+  company: string | null
   industry: string | null
   function: string | null
   email: string | null
@@ -26,7 +26,7 @@ type Lead = {
   due_date: string | null
   revenue?: number | null
   currency?: string | null
-  lead_activities?: { created_at: string, profiles: { full_name: string } | null }[]
+  investor_activities?: { created_at: string, profiles: { full_name: string } | null }[]
 }
 
 function isUrgent(dueDateStr: string | null) {
@@ -59,8 +59,8 @@ type Attachment = {
   profiles: { full_name: string } | null
 }
 
-function fullName(lead: Lead) {
-  return [lead.first_name, lead.last_name].filter(Boolean).join(' ')
+function fullName(investor: Investor) {
+  return [investor.first_name, investor.last_name].filter(Boolean).join(' ')
 }
 
 function formatDesignation(title: string | null) {
@@ -82,7 +82,7 @@ function formatUserName(fullName: string | null | undefined) {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
-  
+
   if (!text || text === '—') return null;
 
   return (
@@ -101,11 +101,11 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>([])
+export default function InvestorsPage() {
+  const [investors, setInvestors] = useState<Investor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false)
+  const [isAddInvestorModalOpen, setIsAddInvestorModalOpen] = useState(false)
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -142,29 +142,29 @@ export default function LeadsPage() {
   const [locationFilter, setLocationFilter] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
   const [functionFilter, setFunctionFilter] = useState('')
-  const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | 'function' | null>(null)
+  const [openFilter, setOpenFilter] = useState<'name' | 'company' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
+  const [expandedInvestorId, setExpandedInvestorId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && leads.length > 0 && expandedLeadId === null) {
+    if (typeof window !== 'undefined' && investors.length > 0 && expandedInvestorId === null) {
       const urlParams = new URLSearchParams(window.location.search)
       const id = urlParams.get('id')
-      if (id && leads.some(l => l.id === id)) {
-        setExpandedLeadId(id)
+      if (id && investors.some(l => l.id === id)) {
+        setExpandedInvestorId(id)
         window.history.replaceState({}, '', '/leads')
       }
     }
-  }, [leads, expandedLeadId])
+  }, [investors, expandedInvestorId])
 
   const [activities, setActivities] = useState<Activity[]>([])
   const [importResult, setImportResult] = useState<{ imported_count: number; errors: string[] } | null>(null)
   const [importProgress, setImportProgress] = useState<{ processed: number, total: number, percentage: number } | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'org' | 'status' | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
+  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'company' | 'status' | null, direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
 
   const [isEditingContact, setIsEditingContact] = useState(false)
-  const [editForm, setEditForm] = useState<Partial<Lead>>({})
+  const [editForm, setEditForm] = useState<Partial<Investor>>({})
   const [isSavingContact, setIsSavingContact] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [isPostingComment, setIsPostingComment] = useState(false)
@@ -175,11 +175,11 @@ export default function LeadsPage() {
     return data.session?.access_token
   }
   const [page, setPage] = useState(1)
-  const [totalLeads, setTotalLeads] = useState(0)
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
+  const [totalInvestors, setTotalInvestors] = useState(0)
+  const [selectedInvestors, setSelectedInvestors] = useState<string[]>([])
   const pageSize = 20
 
-  const fetchLeads = useCallback(async () => {
+  const fetchInvestors = useCallback(async () => {
     const token = await getToken()
     if (!token) {
       setError('Not logged in')
@@ -192,7 +192,7 @@ export default function LeadsPage() {
     params.set('page_size', pageSize.toString())
     if (search) params.set('search', search)
     if (nameFilter) params.set('name', nameFilter)
-    if (companyFilter) params.set('org', companyFilter)
+    if (companyFilter) params.set('company', companyFilter)
     if (designationFilter) params.set('title', designationFilter)
     if (locationFilter) params.set('location', locationFilter)
     if (industryFilter) params.set('industry', industryFilter)
@@ -202,7 +202,7 @@ export default function LeadsPage() {
       params.set('sort_dir', sortConfig.direction)
     }
 
-    const res = await fetch(`${API_URL}/leads?${params.toString()}`, {
+    const res = await fetch(`${API_URL}/investors?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -213,8 +213,8 @@ export default function LeadsPage() {
     }
 
     const data = await res.json()
-    setLeads(data.leads)
-    setTotalLeads(data.total)
+    setInvestors(data.data)
+    setTotalInvestors(data.total)
     setLoading(false)
   }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
 
@@ -232,32 +232,32 @@ export default function LeadsPage() {
     }
   }
 
-  async function toggleActivities(leadId: string) {
-    if (expandedLeadId === leadId) {
-      setExpandedLeadId(null)
+  async function toggleActivities(investorId: string) {
+    if (expandedInvestorId === investorId) {
+      setExpandedInvestorId(null)
       return
     }
 
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/activities`, {
+    const res = await fetch(`${API_URL}/investors/${investorId}/activities`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
     if (res.ok) {
       const data = await res.json()
       setActivities(data)
-      setExpandedLeadId(leadId)
-      fetchAttachments(leadId)
+      setExpandedInvestorId(investorId)
+      fetchAttachments(investorId)
     }
   }
 
-  async function fetchAttachments(leadId: string) {
+  async function fetchAttachments(investorId: string) {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/attachments`, {
+    const res = await fetch(`${API_URL}/investors/${investorId}/attachments`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -267,7 +267,7 @@ export default function LeadsPage() {
     }
   }
 
-  async function handleUploadAttachment(leadId: string, e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadAttachment(investorId: string, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -277,13 +277,13 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    await fetch(`${API_URL}/leads/${leadId}/attachments`, {
+    await fetch(`${API_URL}/investors/${investorId}/attachments`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     })
 
-    fetchAttachments(leadId)
+    fetchAttachments(investorId)
     e.target.value = ''
   }
 
@@ -299,7 +299,7 @@ export default function LeadsPage() {
     window.open(data.url, '_blank')
   }
 
-  async function handleDeleteAttachment(attachmentId: string, leadId: string) {
+  async function handleDeleteAttachment(attachmentId: string, investorId: string) {
     const confirmed = confirm('Delete this attachment?')
     if (!confirmed) return
 
@@ -311,7 +311,7 @@ export default function LeadsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
 
-    fetchAttachments(leadId)
+    fetchAttachments(investorId)
   }
 
   async function handleAddLead(e: React.FormEvent) {
@@ -319,7 +319,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads`, {
+    const res = await fetch(`${API_URL}/investors`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -362,8 +362,8 @@ export default function LeadsPage() {
       setEmail('')
       setLocation('')
       setFunctionField('')
-      setIsAddLeadModalOpen(false)
-      fetchLeads()
+      setIsAddInvestorModalOpen(false)
+      fetchInvestors()
     }
   }
 
@@ -373,20 +373,20 @@ export default function LeadsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchLeads()
+      fetchInvestors()
     }, 300)
     return () => clearTimeout(timer)
-  }, [fetchLeads])
+  }, [fetchInvestors])
 
   useEffect(() => {
     fetchProfile()
   }, [])
 
-  async function handleStatusChange(leadId: string, newStatus: string) {
+  async function handleStatusChange(investorId: string, newStatus: string) {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/investors/${investorId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -395,14 +395,14 @@ export default function LeadsPage() {
       body: JSON.stringify({ status: newStatus }),
     })
 
-    fetchLeads()
+    fetchInvestors()
   }
 
-  async function handleFieldUpdate(leadId: string, field: string, value: string) {
+  async function handleFieldUpdate(investorId: string, field: string, value: string) {
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/investors/${investorId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -410,10 +410,10 @@ export default function LeadsPage() {
       },
       body: JSON.stringify({ [field]: value || null }),
     })
-    fetchLeads()
+    fetchInvestors()
   }
 
-  async function handleUpdateContact(leadId: string) {
+  async function handleUpdateContact(investorId: string) {
     setIsSavingContact(true)
     const token = await getToken()
     if (!token) {
@@ -421,7 +421,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/investors/${investorId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -431,14 +431,14 @@ export default function LeadsPage() {
     })
 
     if (res.ok) {
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...editForm } as Lead : l))
+      setInvestors(prev => prev.map(l => l.id === investorId ? { ...l, ...editForm } as Investor : l))
       setIsEditingContact(false)
-      fetchLeads()
+      fetchInvestors()
     }
     setIsSavingContact(false)
   }
 
-  async function handleQuickActionSubmit(leadId: string, e: React.FormEvent<HTMLFormElement>) {
+  async function handleQuickActionSubmit(investorId: string, e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setIsSavingContact(true)
     const formData = new FormData(e.currentTarget)
@@ -458,7 +458,7 @@ export default function LeadsPage() {
       due_date: due_date || null
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}`, {
+    const res = await fetch(`${API_URL}/investors/${investorId}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -468,13 +468,13 @@ export default function LeadsPage() {
     })
 
     if (res.ok) {
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...payload } as Lead : l))
-      fetchLeads()
+      setInvestors(prev => prev.map(l => l.id === investorId ? { ...l, ...payload } as Investor : l))
+      fetchInvestors()
     }
     setIsSavingContact(false)
   }
 
-  async function handleAddComment(leadId: string, e: React.FormEvent) {
+  async function handleAddComment(investorId: string, e: React.FormEvent) {
     e.preventDefault()
     if (!commentText.trim()) return
 
@@ -485,7 +485,7 @@ export default function LeadsPage() {
       return
     }
 
-    const res = await fetch(`${API_URL}/leads/${leadId}/notes`, {
+    const res = await fetch(`${API_URL}/investors/${investorId}/notes`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -496,7 +496,7 @@ export default function LeadsPage() {
 
     if (res.ok) {
       setCommentText('')
-      const actsRes = await fetch(`${API_URL}/leads/${leadId}/activities`, {
+      const actsRes = await fetch(`${API_URL}/investors/${investorId}/activities`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (actsRes.ok) {
@@ -507,38 +507,38 @@ export default function LeadsPage() {
     setIsPostingComment(false)
   }
 
-  async function handleDelete(leadId: string) {
-    const confirmed = confirm('Delete this lead? This cannot be undone.')
+  async function handleDelete(investorId: string) {
+    const confirmed = confirm('Delete this investor? This cannot be undone.')
     if (!confirmed) return
 
     const token = await getToken()
     if (!token) return
 
-    await fetch(`${API_URL}/leads/${leadId}`, {
+    await fetch(`${API_URL}/investors/${investorId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
 
-    fetchLeads()
+    fetchInvestors()
   }
 
   async function handleBulkDelete() {
-    if (selectedLeads.length === 0) return
-    const confirmed = confirm(`Delete ${selectedLeads.length} leads? This cannot be undone.`)
+    if (selectedInvestors.length === 0) return
+    const confirmed = confirm(`Delete ${selectedInvestors.length} leads? This cannot be undone.`)
     if (!confirmed) return
 
     const token = await getToken()
     if (!token) return
 
-    await Promise.all(selectedLeads.map(leadId =>
-      fetch(`${API_URL}/leads/${leadId}`, {
+    await Promise.all(selectedInvestors.map(investorId =>
+      fetch(`${API_URL}/investors/${investorId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
     ))
 
-    setSelectedLeads([])
-    fetchLeads()
+    setSelectedInvestors([])
+    fetchInvestors()
   }
 
   function handleExport() {
@@ -550,8 +550,8 @@ export default function LeadsPage() {
     if (!token) return
 
     const exportTypesQuery = exportTypes.join(',')
-    const urlStr = exportTypesQuery ? `${API_URL}/leads/export?export_type=${exportTypesQuery}` : `${API_URL}/leads/export`
-    
+    const urlStr = exportTypesQuery ? `${API_URL}/investors/export?export_type=${exportTypesQuery}` : `${API_URL}/investors/export`
+
     const res = await fetch(urlStr, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -570,7 +570,7 @@ export default function LeadsPage() {
     const token = await getToken()
     if (!token) return
 
-    const res = await fetch(`${API_URL}/leads/import-template-xlsx`, {
+    const res = await fetch(`${API_URL}/investors/import-template-xlsx`, {
       headers: { Authorization: `Bearer ${token}` },
     })
 
@@ -593,7 +593,7 @@ export default function LeadsPage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const res = await fetch(`${API_URL}/leads/import`, {
+    const res = await fetch(`${API_URL}/investors/import`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
@@ -631,7 +631,7 @@ export default function LeadsPage() {
           } else if (data.type === 'complete') {
             setImportProgress(null)
             setImportResult({ imported_count: data.imported_count, errors: data.errors })
-            fetchLeads()
+            fetchInvestors()
           }
         } catch (err) {
           console.error('Failed to parse NDJSON line', line)
@@ -642,7 +642,7 @@ export default function LeadsPage() {
     e.target.value = '' // reset the file input so the same file can be re-selected if needed
   }
 
-  const handleSort = (key: 'name' | 'org' | 'status') => {
+  const handleSort = (key: 'name' | 'company' | 'status') => {
     let direction: 'asc' | 'desc' = 'asc'
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc'
@@ -650,7 +650,7 @@ export default function LeadsPage() {
     setSortConfig({ key, direction })
   }
 
-  const SortIcon = ({ columnKey }: { columnKey: 'name' | 'org' | 'status' }) => {
+  const SortIcon = ({ columnKey }: { columnKey: 'name' | 'company' | 'status' }) => {
     if (sortConfig.key !== columnKey) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-50" />
     return sortConfig.direction === 'asc' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />
   }
@@ -666,7 +666,7 @@ export default function LeadsPage() {
     </main>
   )
 
-  const expandedLead = leads.find(l => l.id === expandedLeadId)
+  const expandedLead = investors.find(l => l.id === expandedInvestorId)
 
   const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null;
 
@@ -693,7 +693,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Leads</h1>
+            <h1 className="text-xl font-semibold">Investors</h1>
           </div>
         </header>
 
@@ -748,15 +748,15 @@ export default function LeadsPage() {
                     </button>
                   )}
                 </div>
-                
+
                 <div className="flex items-center gap-3">
-                  {selectedLeads.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
+                  {selectedInvestors.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
                     <button
                       onClick={handleBulkDelete}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm whitespace-nowrap"
                     >
                       <Trash2 className="w-4 h-4" />
-                      Delete ({selectedLeads.length})
+                      Delete ({selectedInvestors.length})
                     </button>
                   ) : null}
                   <div className="relative">
@@ -813,11 +813,11 @@ export default function LeadsPage() {
                     <input type="file" accept=".csv,.xlsx" onChange={handleImport} className="hidden" />
                   </label>
                   <button
-                    onClick={() => setIsAddLeadModalOpen(true)}
+                    onClick={() => setIsAddInvestorModalOpen(true)}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-brand-600 border border-transparent rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    Add Lead
+                    Add Investor
                   </button>
                 </div>
               </div>
@@ -832,12 +832,12 @@ export default function LeadsPage() {
                       <th scope="col" className="w-12 px-3 py-2 text-left align-top">
                         <input
                           type="checkbox"
-                          checked={leads.length > 0 && selectedLeads.length === leads.length}
+                          checked={investors.length > 0 && selectedInvestors.length === investors.length}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedLeads(leads.map(l => l.id))
+                              setSelectedInvestors(investors.map(l => l.id))
                             } else {
-                              setSelectedLeads([])
+                              setSelectedInvestors([])
                             }
                           }}
                           className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
@@ -901,49 +901,21 @@ export default function LeadsPage() {
                           </>
                         )}
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left align-top relative">
-                        <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="p-1 -ml-1 flex items-center">
-                            Function
-                          </div>
-                          <button
-                            onClick={() => setOpenFilter(openFilter === 'function' ? null : 'function')}
-                            className={`ml-1 p-1 rounded transition-colors ${functionFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
-                          >
-                            <Filter className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
 
-                        {openFilter === 'function' && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
-                            <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
-                              <input
-                                autoFocus
-                                type="text"
-                                placeholder="Filter function..."
-                                value={functionFilter}
-                                onChange={(e) => setFunctionFilter(e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-md focus:ring-2 focus:ring-brand-500 outline-none font-normal"
-                              />
-                            </div>
-                          </>
-                        )}
-                      </th>
                       <th scope="col" className="px-3 py-2 text-left align-top relative">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('org')}>
-                            Company <SortIcon columnKey="org" />
+                          <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('company')}>
+                            Company <SortIcon columnKey="company" />
                           </div>
                           <button
-                            onClick={() => setOpenFilter(openFilter === 'org' ? null : 'org')}
+                            onClick={() => setOpenFilter(openFilter === 'company' ? null : 'company')}
                             className={`ml-1 p-1 rounded transition-colors ${companyFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
                           >
                             <Filter className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {openFilter === 'org' && (
+                        {openFilter === 'company' && (
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
                             <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
@@ -988,35 +960,7 @@ export default function LeadsPage() {
                           </>
                         )}
                       </th>
-                      <th scope="col" className="px-3 py-2 text-left align-top relative">
-                        <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
-                          <div className="p-1 -ml-1 flex items-center">
-                            Industry
-                          </div>
-                          <button
-                            onClick={() => setOpenFilter(openFilter === 'industry' ? null : 'industry')}
-                            className={`ml-1 p-1 rounded transition-colors ${industryFilter ? 'text-brand-600 bg-brand-50 dark:bg-brand-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-800'}`}
-                          >
-                            <Filter className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
 
-                        {openFilter === 'industry' && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenFilter(null)}></div>
-                            <div className="absolute top-full left-6 mt-1 z-20 w-48 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg shadow-lg p-2">
-                              <input
-                                autoFocus
-                                type="text"
-                                placeholder="Filter industry..."
-                                value={industryFilter}
-                                onChange={(e) => setIndustryFilter(e.target.value)}
-                                className="w-full px-2 py-1.5 text-sm bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-md focus:ring-2 focus:ring-brand-500 outline-none font-normal"
-                              />
-                            </div>
-                          </>
-                        )}
-                      </th>
 
                       <th scope="col" className="px-3 py-2 text-left align-top">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded w-fit" onClick={() => handleSort('status')}>
@@ -1036,48 +980,44 @@ export default function LeadsPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
-                    {leads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors group">
+                    {investors.map((investor) => (
+                      <tr key={investor.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors group">
                         <td className="px-3 py-3 ">
                           <input
                             type="checkbox"
-                            checked={selectedLeads.includes(lead.id)}
+                            checked={selectedInvestors.includes(investor.id)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedLeads([...selectedLeads, lead.id])
+                                setSelectedInvestors([...selectedInvestors, investor.id])
                               } else {
-                                setSelectedLeads(selectedLeads.filter(id => id !== lead.id))
+                                setSelectedInvestors(selectedInvestors.filter(id => id !== investor.id))
                               }
                             }}
                             className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                           />
                         </td>
                         <td className="px-3 py-3 ">
-                          <button onClick={() => toggleActivities(lead.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
-                            {fullName(lead)}
+                          <button onClick={() => toggleActivities(investor.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+                            {fullName(investor)}
                           </button>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          <div title={lead.title || ''}>{formatDesignation(lead.title)}</div>
+                          <div title={investor.title || ''}>{formatDesignation(investor.title)}</div>
+                        </td>
+
+                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
+                          {investor.company || '—'}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.function || '—'}
+                          {investor.location || '—'}
                         </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.org || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.location || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.industry || '—'}
-                        </td>
+
 
                         <td className="px-3 py-3 ">
                           <div className="relative inline-block w-fit">
                             <select
-                              value={lead.status}
-                              onChange={(e) => handleStatusChange(lead.id, e.target.value)}
+                              value={investor.status}
+                              onChange={(e) => handleStatusChange(investor.id, e.target.value)}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             >
                               <option>New</option>
@@ -1086,22 +1026,22 @@ export default function LeadsPage() {
                               <option>Won</option>
                               <option>Lost</option>
                             </select>
-                            <Badge status={lead.status} />
+                            <Badge status={investor.status} />
                           </div>
                         </td>
                         <td className="px-3 py-3 text-sm">
-                          {lead.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={lead.next_action}>{lead.next_action}</div>}
-                          {lead.due_date && <div className={`text-xs mt-0.5 ${isUrgent(lead.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(lead.due_date).toLocaleDateString()}</div>}
-                          {!lead.next_action && !lead.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
+                          {investor.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={investor.next_action}>{investor.next_action}</div>}
+                          {investor.due_date && <div className={`text-xs mt-0.5 ${isUrgent(investor.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(investor.due_date).toLocaleDateString()}</div>}
+                          {!investor.next_action && !investor.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
                         </td>
                         <td className="px-3 py-3 text-sm">
-                          {lead.lead_activities && lead.lead_activities.length > 0 ? (
+                          {investor.investor_activities && investor.investor_activities.length > 0 ? (
                             <div>
-                              <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={formatUserName(lead.lead_activities[0].profiles?.full_name)}>
-                                {formatUserName(lead.lead_activities[0].profiles?.full_name)}
+                              <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={formatUserName(investor.investor_activities[0].profiles?.full_name)}>
+                                {formatUserName(investor.investor_activities[0].profiles?.full_name)}
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                {new Date(lead.lead_activities[0].created_at).toLocaleDateString()}
+                                {new Date(investor.investor_activities[0].created_at).toLocaleDateString()}
                               </div>
                             </div>
                           ) : (
@@ -1110,7 +1050,7 @@ export default function LeadsPage() {
                         </td>
                       </tr>
                     ))}
-                    {leads.length === 0 && (
+                    {investors.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
                           No leads found matching your search.
@@ -1123,7 +1063,7 @@ export default function LeadsPage() {
 
               <div className="border-t border-gray-200 dark:border-neutral-800 px-3 py-2 flex items-center justify-between bg-gray-50 dark:bg-neutral-900/50 shrink-0">
                 <div className="text-sm text-gray-500">
-                  Page <span className="font-medium">{page}</span> of <span className="font-medium">{Math.max(1, Math.ceil(totalLeads / pageSize))}</span>
+                  Page <span className="font-medium">{page}</span> of <span className="font-medium">{Math.max(1, Math.ceil(totalInvestors / pageSize))}</span>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1134,7 +1074,7 @@ export default function LeadsPage() {
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    disabled={page >= Math.ceil(totalLeads / pageSize)}
+                    disabled={page >= Math.ceil(totalInvestors / pageSize)}
                     onClick={() => setPage(page + 1)}
                     className="p-1 rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-700 disabled:opacity-50 transition-colors"
                   >
@@ -1148,70 +1088,15 @@ export default function LeadsPage() {
       </main>
 
       <Modal
-        isOpen={isAddLeadModalOpen}
-        onClose={() => setIsAddLeadModalOpen(false)}
+        isOpen={isAddInvestorModalOpen}
+        onClose={() => setIsAddInvestorModalOpen(false)}
         title="Add New Lead"
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleAddLead} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">First Name *</label>
-              <input
-                placeholder="e.g. Jane"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Last Name</label>
-              <input
-                placeholder="e.g. Doe"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Title</label>
-              <input
-                placeholder="e.g. CEO"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Organization</label>
-              <input
-                placeholder="e.g. Acme Corp"
-                value={org}
-                onChange={(e) => setOrg(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Industry</label>
-              <input
-                placeholder="e.g. Technology"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Function</label>
-              <input
-                placeholder="e.g. Sales"
-                value={functionField}
-                onChange={(e) => setFunctionField(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Status</label>
               <select
@@ -1287,7 +1172,7 @@ export default function LeadsPage() {
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
               />
             </div>
-            
+
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">LinkedIn URL</label>
               <input
@@ -1321,7 +1206,7 @@ export default function LeadsPage() {
           <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800">
             <button
               type="button"
-              onClick={() => setIsAddLeadModalOpen(false)}
+              onClick={() => setIsAddInvestorModalOpen(false)}
               className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded-lg transition-colors border border-gray-200 dark:border-neutral-700"
             >
               Cancel
@@ -1337,9 +1222,9 @@ export default function LeadsPage() {
       </Modal>
 
       <Modal
-        isOpen={expandedLeadId !== null}
+        isOpen={expandedInvestorId !== null}
         onClose={() => {
-          setExpandedLeadId(null)
+          setExpandedInvestorId(null)
           setIsEditingContact(false)
         }}
         title=""
@@ -1355,14 +1240,14 @@ export default function LeadsPage() {
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
-                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.org || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
+                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.company || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setEditForm(expandedLead); setIsEditingContact(true); }} className="text-brand-600 hover:text-brand-700 hover:bg-brand-50 transition-colors p-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium mr-2">
                         <Edit2 className="w-4 h-4" /> Edit
                       </button>
-                      <button onClick={() => { setExpandedLeadId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
+                      <button onClick={() => { setExpandedInvestorId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
@@ -1428,7 +1313,7 @@ export default function LeadsPage() {
                         <span className="text-gray-400">&bull;</span>
                         <input value={editForm.function || ''} onChange={(e) => setEditForm({ ...editForm, function: e.target.value })} placeholder="Function" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
-                        <input value={editForm.org || ''} onChange={(e) => setEditForm({ ...editForm, org: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
+                        <input value={editForm.company || ''} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })} placeholder="Company" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                         <span className="text-gray-400">&bull;</span>
                         <input value={editForm.industry || ''} onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })} placeholder="Industry" className="text-sm text-gray-900 dark:text-white bg-transparent border-b border-gray-300 dark:border-gray-700 outline-none focus:border-brand-500 w-1/4 pb-1" />
                       </div>
@@ -1541,7 +1426,7 @@ export default function LeadsPage() {
                     Upload
                     <input
                       type="file"
-                      onChange={(e) => expandedLeadId && handleUploadAttachment(expandedLeadId, e)}
+                      onChange={(e) => expandedInvestorId && handleUploadAttachment(expandedInvestorId, e)}
                       className="hidden"
                     />
                   </label>
@@ -1567,7 +1452,7 @@ export default function LeadsPage() {
                         </button>
                         {profile?.role_level && profile.role_level >= 1 && (
                           <button
-                            onClick={() => expandedLeadId && handleDeleteAttachment(a.id, expandedLeadId)}
+                            onClick={() => expandedInvestorId && handleDeleteAttachment(a.id, expandedInvestorId)}
                             className="text-gray-400 hover:text-red-600 transition-colors p-1"
                             title="Delete"
                           >
@@ -1585,8 +1470,8 @@ export default function LeadsPage() {
               <History className="w-4 h-4 text-gray-400" /> Activity Timeline
             </h3> */}
 
-                {/* {expandedLeadId && (
-              <form onSubmit={(e) => handleAddComment(expandedLeadId, e)} className="mb-6">
+                {/* {expandedInvestorId && (
+              <form onSubmit={(e) => handleAddComment(expandedInvestorId, e)} className="mb-6">
                 <div className="relative">
                   <textarea
                     value={commentText}

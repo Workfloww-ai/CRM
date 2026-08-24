@@ -41,3 +41,69 @@ class LeadUpdate(BaseModel):
 
 class NoteCreate(BaseModel):
     content: str
+
+
+class InvestorCreate(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    status: str = "New"
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class InvestorUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    status: Optional[str] = None
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class FractionalLeaderCreate(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    domain: Optional[str] = None
+    status: str = "New"
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class FractionalLeaderUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    domain: Optional[str] = None
+    status: Optional[str] = None
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class TrainingPartnerCreate(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    organization: Optional[str] = None
+    status: str = "New"
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None
+
+
+class TrainingPartnerUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    organization: Optional[str] = None
+    status: Optional[str] = None
+    next_action: Optional[str] = None
+    due_date: Optional[str] = None

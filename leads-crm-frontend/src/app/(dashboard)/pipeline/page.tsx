@@ -31,7 +31,7 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 }
 
 function fullName(lead: Lead) {
-    return [lead.first_name, lead.last_name].filter(Boolean).join(' ')
+    return [pipeline.first_name, lead.last_name].filter(Boolean).join(' ')
 }
 
 function formatRevenue(revenue: number | null, currency: string | null) {
