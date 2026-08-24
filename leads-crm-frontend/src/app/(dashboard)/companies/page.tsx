@@ -18,7 +18,7 @@ type Lead = {
 }
 
 function fullName(lead: Lead) {
-    return [companies.first_name, lead.last_name].filter(Boolean).join(' ')
+    return [lead.first_name, lead.last_name].filter(Boolean).join(' ')
 }
 
 
