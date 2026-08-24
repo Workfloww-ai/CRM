@@ -1,0 +1,46 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+
+
+
+eyJhbGciOiJFUzI1NiIsImtpZCI6ImE2NDVhYTAzLTcyYjgtNDYxZi1iNDZlLWQxOWEyMmU1MDc0YSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2pkZmpvbnFua3J3aGtveHFjbG9pLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI2ZTVlZmIxOS0yOGJkLTRjNDAtODdlMy03NTQ4MjEzMmY3NTUiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg2NDI3NzczLCJpYXQiOjE3ODY0MjQxNzMsImVtYWlsIjoibW9uYWxpa2EuZ29lbEB3b3JrZmxvd3cuYWkiLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsIjoibW9uYWxpa2EuZ29lbEB3b3JrZmxvd3cuYWkiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI2ZTVlZmIxOS0yOGJkLTRjNDAtODdlMy03NTQ4MjEzMmY3NTUifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc4NjQyNDE3M31dLCJzZXNzaW9uX2lkIjoiMTdiZDk1YmUtYWU5Ny00YTAwLTgxM2MtODFmOGM1OTdhNzdjIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.NQSVcTLKblnA6AvqYq7mdwybp9zyrx9R4K6nNHmjIshqQJCZV8wzwUmbN5FMmsYVXjZ9ZIHRrGIm-hg4d5NEcg
