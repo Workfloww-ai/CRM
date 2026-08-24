@@ -207,6 +207,11 @@ export default function LeadsPage() {
     })
 
     if (!res.ok) {
+      if (res.status === 401) {
+        await supabase.auth.signOut()
+        window.location.href = '/'
+        return
+      }
       setError('Failed to fetch leads')
       setLoading(false)
       return
@@ -229,6 +234,9 @@ export default function LeadsPage() {
     if (res.ok) {
       const data = await res.json()
       setProfile(data)
+    } else if (res.status === 401) {
+      await supabase.auth.signOut()
+      window.location.href = '/'
     }
   }
 
