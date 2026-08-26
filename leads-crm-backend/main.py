@@ -601,7 +601,7 @@ def export_investors(request: Request, user=Depends(require_super_admin)):
     data = response.data
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'email', 'phone', 'company', 'status', 'next_action', 'due_date'])
+    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
         writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
@@ -618,7 +618,7 @@ def export_investors(request: Request, user=Depends(require_super_admin)):
 def import_template_investors(request: Request, user=Depends(require_super_admin)):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['first_name', 'last_name', 'email', 'phone', 'company', 'status', 'next_action', 'due_date'])
+    writer.writerow(['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     output.seek(0)
     return StreamingResponse(
         output,
@@ -632,7 +632,7 @@ def import_template_xlsx_investors(request: Request, user=Depends(require_super_
     wb = Workbook()
     ws = wb.active
     ws.title = "Investor"
-    cols = ['first_name', 'last_name', 'email', 'phone', 'company', 'status', 'next_action', 'due_date']
+    cols = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     ws.append(cols)
 
     for col_idx, header in enumerate(cols, start=1):
@@ -677,7 +677,7 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
     
-    expected = ['first_name', 'last_name', 'email', 'phone', 'company', 'status', 'next_action', 'due_date']
+    expected = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]
@@ -793,7 +793,7 @@ def export_fractional_leaders(request: Request, user=Depends(get_current_user)):
     data = response.data
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'email', 'phone', 'domain', 'status', 'next_action', 'due_date'])
+    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
         writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
@@ -810,7 +810,7 @@ def export_fractional_leaders(request: Request, user=Depends(get_current_user)):
 def import_template_fractional_leaders(request: Request, user=Depends(get_current_user)):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['first_name', 'last_name', 'email', 'phone', 'domain', 'status', 'next_action', 'due_date'])
+    writer.writerow(['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     output.seek(0)
     return StreamingResponse(
         output,
@@ -824,7 +824,7 @@ def import_template_xlsx_fractional_leaders(request: Request, user=Depends(get_c
     wb = Workbook()
     ws = wb.active
     ws.title = "Fractional_Leader"
-    cols = ['first_name', 'last_name', 'email', 'phone', 'domain', 'status', 'next_action', 'due_date']
+    cols = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     ws.append(cols)
 
     for col_idx, header in enumerate(cols, start=1):
@@ -869,7 +869,7 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
     
-    expected = ['first_name', 'last_name', 'email', 'phone', 'domain', 'status', 'next_action', 'due_date']
+    expected = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]
@@ -982,7 +982,7 @@ def export_training_partners(request: Request, user=Depends(get_current_user)):
     data = response.data
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'email', 'phone', 'organization', 'status', 'next_action', 'due_date'])
+    writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency'])
     writer.writeheader()
     for row in data:
         writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
@@ -999,7 +999,7 @@ def export_training_partners(request: Request, user=Depends(get_current_user)):
 def import_template_training_partners(request: Request, user=Depends(get_current_user)):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['first_name', 'last_name', 'email', 'phone', 'organization', 'status', 'next_action', 'due_date'])
+    writer.writerow(['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency'])
     output.seek(0)
     return StreamingResponse(
         output,
@@ -1013,7 +1013,7 @@ def import_template_xlsx_training_partners(request: Request, user=Depends(get_cu
     wb = Workbook()
     ws = wb.active
     ws.title = "Training_Partner"
-    cols = ['first_name', 'last_name', 'email', 'phone', 'organization', 'status', 'next_action', 'due_date']
+    cols = ['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency']
     ws.append(cols)
 
     for col_idx, header in enumerate(cols, start=1):
@@ -1058,7 +1058,7 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
     
-    expected = ['first_name', 'last_name', 'email', 'phone', 'organization', 'status', 'next_action', 'due_date']
+    expected = ['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency']
     
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]

@@ -140,8 +140,9 @@ def create_company_report(client, company_name: str, requested_by: str):
 # --- Investors ---
 
 INVESTOR_COLUMNS = (
-    "id, first_name, last_name, email, phone, company, status, "
-    "next_action, due_date, created_at, updated_at, deleted_at"
+    "id, first_name, last_name, title, email, phone, phone_2, company, industry, "
+    "function, linkedin, location, revenue, currency, status, next_action, due_date, "
+    "created_at, updated_at, deleted_at"
 )
 
 def get_all_investors(client):
@@ -176,8 +177,9 @@ def delete_investor(client, id: str):
 # --- Fractional Leaders ---
 
 FRACTIONAL_LEADER_COLUMNS = (
-    "id, first_name, last_name, email, phone, domain, status, "
-    "next_action, due_date, created_at, updated_at, deleted_at"
+    "id, first_name, last_name, title, email, phone, phone_2, domain, industry, "
+    "function, linkedin, location, revenue, currency, status, next_action, due_date, "
+    "created_at, updated_at, deleted_at"
 )
 
 def get_all_fractional_leaders(client):
@@ -214,8 +216,9 @@ def delete_fractional_leader(client, id: str):
 # --- Training Partners ---
 
 TRAINING_PARTNER_COLUMNS = (
-    "id, first_name, last_name, email, phone, organization, status, "
-    "next_action, due_date, created_at, updated_at, deleted_at"
+    "id, first_name, last_name, title, email, phone, phone_2, organization, industry, "
+    "function, linkedin, location, revenue, currency, status, next_action, due_date, "
+    "created_at, updated_at, deleted_at"
 )
 
 def get_all_training_partners(client):
