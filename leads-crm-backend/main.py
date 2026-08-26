@@ -410,14 +410,31 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
 
+        existing_records_response = get_all_leads(client)
+        existing_names = set(
+            (cell_to_str(r.get("first_name")).lower(), cell_to_str(r.get("last_name")).lower())
+            for r in existing_records_response.data
+        )
+
         for i, row in enumerate(reader, start=2):
             first_name = cell_to_str(row.get("first_name"))
+            last_name = cell_to_str(row.get("last_name"))
             status = cell_to_str(row.get("status")) or "New"
 
             if not first_name:
-                errors.append(f"Row {i}: 'first_name' is required, row rejected")
+                is_empty_row = not any(cell_to_str(v) for v in row.values())
+                if not is_empty_row:
+                    errors.append(f"Row {i}: 'first_name' is required")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
                 continue
+
+            name_tuple = (first_name.lower(), last_name.lower())
+            if name_tuple in existing_names:
+                # Silently skip duplicates
+                yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
+                continue
+            existing_names.add(name_tuple)
+
 
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status {sorted(VALID_STATUSES)}, row rejected")
@@ -692,14 +709,31 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
 
+        existing_records_response = get_all_investors(client)
+        existing_names = set(
+            (cell_to_str(r.get("first_name")).lower(), cell_to_str(r.get("last_name")).lower())
+            for r in existing_records_response.data
+        )
+
         for i, row in enumerate(reader, start=2):
             first_name = cell_to_str(row.get("first_name"))
+            last_name = cell_to_str(row.get("last_name"))
             status = cell_to_str(row.get("status")) or "New"
 
             if not first_name:
-                errors.append(f"Row {i}: 'first_name' is required")
+                is_empty_row = not any(cell_to_str(v) for v in row.values())
+                if not is_empty_row:
+                    errors.append(f"Row {i}: 'first_name' is required")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
                 continue
+
+            name_tuple = (first_name.lower(), last_name.lower())
+            if name_tuple in existing_names:
+                # Silently skip duplicates
+                yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
+                continue
+            existing_names.add(name_tuple)
+
 
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
@@ -884,14 +918,31 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
 
+        existing_records_response = get_all_fractional_leaders(client)
+        existing_names = set(
+            (cell_to_str(r.get("first_name")).lower(), cell_to_str(r.get("last_name")).lower())
+            for r in existing_records_response.data
+        )
+
         for i, row in enumerate(reader, start=2):
             first_name = cell_to_str(row.get("first_name"))
+            last_name = cell_to_str(row.get("last_name"))
             status = cell_to_str(row.get("status")) or "New"
 
             if not first_name:
-                errors.append(f"Row {i}: 'first_name' is required")
+                is_empty_row = not any(cell_to_str(v) for v in row.values())
+                if not is_empty_row:
+                    errors.append(f"Row {i}: 'first_name' is required")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
                 continue
+
+            name_tuple = (first_name.lower(), last_name.lower())
+            if name_tuple in existing_names:
+                # Silently skip duplicates
+                yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
+                continue
+            existing_names.add(name_tuple)
+
 
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
@@ -1073,14 +1124,31 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
 
+        existing_records_response = get_all_training_partners(client)
+        existing_names = set(
+            (cell_to_str(r.get("first_name")).lower(), cell_to_str(r.get("last_name")).lower())
+            for r in existing_records_response.data
+        )
+
         for i, row in enumerate(reader, start=2):
             first_name = cell_to_str(row.get("first_name"))
+            last_name = cell_to_str(row.get("last_name"))
             status = cell_to_str(row.get("status")) or "New"
 
             if not first_name:
-                errors.append(f"Row {i}: 'first_name' is required")
+                is_empty_row = not any(cell_to_str(v) for v in row.values())
+                if not is_empty_row:
+                    errors.append(f"Row {i}: 'first_name' is required")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
                 continue
+
+            name_tuple = (first_name.lower(), last_name.lower())
+            if name_tuple in existing_names:
+                # Silently skip duplicates
+                yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
+                continue
+            existing_names.add(name_tuple)
+
 
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
