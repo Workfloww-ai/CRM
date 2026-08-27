@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type FractionalLeader = {
@@ -145,6 +145,12 @@ export default function FractionalLeadersPage() {
   const [openFilter, setOpenFilter] = useState<'name' | 'domain' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [expandedLeaderId, setExpandedLeaderId] = useState<string | null>(null)
+  const [senderAccount, setSenderAccount] = useState('manish@workfloww.ai')
+  const [showCcBcc, setShowCcBcc] = useState(false)
+  const [ccEmails, setCcEmails] = useState('')
+  const [bccEmails, setBccEmails] = useState('manish.chum@workfloww.ai,shilpa.chitkara@workfloww.ai')
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [emailTargetLeader, setEmailTargetLeader] = useState<FractionalLeader | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && leaders.length > 0 && expandedLeaderId === null) {
@@ -565,6 +571,33 @@ export default function FractionalLeadersPage() {
     window.URL.revokeObjectURL(url)
     setIsExportPopoverOpen(false)
   }
+
+  const handleGmailClick = (leader: FractionalLeader) => {
+    const to = leader.email || '';
+    const subject = "Monetizing your CXO IP beyond billable hours";
+    const firstName = leader.first_name || '';
+    const body = `Hi ${firstName},
+Most fractional CXOs design high-impact strategic playbooks, only to watch client execution stall the moment they step out of the room. When engagements stay tied purely to advisory hours, you hit a natural capacity ceiling and miss out on the long-term, enterprise-wide transformation budgets CEOs routinely allocate.
+I’m Manish, founder at workfloww.ai (Ex EY, Airtel, Maersk, Mahindra). We built Lucid, an AI enterprise capability execution platform that fractional leaders and executive advisors use as their dedicated technology layer. By backing your strategic frameworks with our platform, you bridge the gap between executive advisory and daily operational execution positioning your practice as an end-to-end business transformation partner.
+What’s in it for your top line:
+Scale Multi-Client ARR: Uncap your billable hours. Productize your playbooks and frameworks into automated AI workflows, earning recurring platform and enablement retainers across multiple enterprise clients simultaneously.
+Command 3x–5x Larger Mandates: Move from selling fractional hours to capturing transformation budgets, backed by real-time execution analytics and readiness scores that CEOs and Boards readily fund.
+Lock in Stickier Retainers: Stop client churn. Our AI platform drives daily simulation and workplace application, delivering undeniable proof of execution ROI that protects and extends your contracts.
+Software Margins, Zero Tech CapEx: Monetize like a SaaS business with zero engineering cost. You retain 100% client equity, IP ownership, and pricing control while our AI platform powers the delivery behind the scenes.
+We are currently onboarding an exclusive cohort of Fractional CXOs and executive advisors to co-package high-ticket transformation solutions for enterprise clients.
+Please note we are not offering you reseller or referral programme. We are offering you a AI tech layer which you can leverage in your consulting assignments.
+Would you be open to a 15-minute founder-to-founder conversation this week? I’d love to walk you through the platform and discuss how our platform can expand your advisory practice.
+Best,
+Manish Chum
+Founder, Workfloww.ai
+Mobile: +91-995882445`;
+    
+    let url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    if (senderAccount) url += `&authuser=${encodeURIComponent(senderAccount)}`;
+    if (ccEmails) url += `&cc=${encodeURIComponent(ccEmails)}`;
+    if (bccEmails) url += `&bcc=${encodeURIComponent(bccEmails)}`;
+    window.open(url, '_blank');
+  };
 
   async function handleDownloadTemplate() {
     const token = await getToken()
@@ -997,9 +1030,24 @@ export default function FractionalLeadersPage() {
                           />
                         </td>
                         <td className="px-3 py-3 ">
-                          <button onClick={() => toggleActivities(leader.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
-                            {fullName(leader)}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => toggleActivities(leader.id)} className="text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+                              {fullName(leader)}
+                            </button>
+                            {leader.email && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEmailTargetLeader(leader);
+                                  setIsEmailModalOpen(true);
+                                }}
+                                className="text-gray-400 hover:text-red-600 transition-colors"
+                                title="Send Email"
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           <div title={leader.title || ''}>{formatDesignation(leader.title)}</div>
@@ -1095,8 +1143,61 @@ export default function FractionalLeadersPage() {
       >
         <form onSubmit={handleAddLead} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            
-            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">First Name *</label>
+              <input
+                required
+                placeholder="e.g. John"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Last Name</label>
+              <input
+                placeholder="e.g. Doe"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Title</label>
+              <input
+                placeholder="e.g. CEO"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Organization</label>
+              <input
+                placeholder="e.g. Acme Corp"
+                value={org}
+                onChange={(e) => setOrg(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Industry</label>
+              <input
+                placeholder="e.g. Technology"
+                value={industry}
+                onChange={(e) => setIndustry(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Function</label>
+              <input
+                placeholder="e.g. Engineering"
+                value={functionField}
+                onChange={(e) => setFunctionField(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Status</label>
               <select
@@ -1236,20 +1337,32 @@ export default function FractionalLeadersPage() {
             <div className="p-8">
               {!isEditingContact ? (
                 <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 mb-10 shadow-sm relative">
-                  <div className="flex items-start justify-between mb-8">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
-                        {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.domain || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
-                      </p>
+                  <div className="flex flex-col mb-8 gap-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{fullName(expandedLead)}</h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                          {expandedLead.title || 'Unknown Position'} &bull; {expandedLead.domain || 'Unknown Company'} &bull; {expandedLead.industry || 'Unknown Industry'} &bull; {expandedLead.function || 'Unknown Function'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => { setEditForm(expandedLead); setIsEditingContact(true); }} className="text-brand-600 hover:text-brand-700 hover:bg-brand-50 transition-colors p-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium mr-2">
+                          <Edit2 className="w-4 h-4" /> Edit
+                        </button>
+                        <button onClick={() => { setExpandedLeaderId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => { setEditForm(expandedLead); setIsEditingContact(true); }} className="text-brand-600 hover:text-brand-700 hover:bg-brand-50 transition-colors p-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium mr-2">
-                        <Edit2 className="w-4 h-4" /> Edit
-                      </button>
-                      <button onClick={() => { setExpandedLeaderId(null); setIsEditingContact(false) }} className="text-gray-400 hover:text-gray-500 transition-colors p-1 -mt-2 -mr-2">
-                        <X className="w-5 h-5" />
-                      </button>
+
+                    <div className="flex flex-col gap-2 p-1">
+                      <div className="flex items-center gap-3">
+                        {expandedLead.email && (
+                          <button onClick={() => { setEmailTargetLeader(expandedLead); setIsEmailModalOpen(true); }} className="text-white bg-red-600 hover:bg-red-700 transition-colors px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-sm font-medium shadow-sm whitespace-nowrap shrink-0">
+                            <Mail className="w-4 h-4" /> Send Email via Gmail
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1513,6 +1626,80 @@ export default function FractionalLeadersPage() {
               </div>
             </div>
           )}
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        title="Compose Email"
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">From</label>
+            <input 
+              type="email" 
+              value={senderAccount} 
+              onChange={(e) => setSenderAccount(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">To</label>
+            <input 
+              type="email" 
+              value={emailTargetLeader?.email || ''} 
+              readOnly
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-500 cursor-not-allowed"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1 flex items-center justify-between">
+              CC (optional)
+              <button type="button" onClick={() => setShowCcBcc(!showCcBcc)} className="text-xs text-brand-600 hover:underline">{showCcBcc ? 'Hide CC/BCC' : 'Show CC/BCC'}</button>
+            </label>
+            {showCcBcc && (
+              <input 
+                type="text" 
+                value={ccEmails} 
+                onChange={(e) => setCcEmails(e.target.value)}
+                placeholder="comma-separated emails"
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            )}
+          </div>
+          {showCcBcc && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">BCC (optional)</label>
+              <input 
+                type="text" 
+                value={bccEmails} 
+                onChange={(e) => setBccEmails(e.target.value)}
+                placeholder="comma-separated emails"
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          )}
+
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800 mt-6">
+            <button
+              type="button"
+              onClick={() => setIsEmailModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded-lg transition-colors border border-gray-200 dark:border-neutral-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (emailTargetLeader) handleGmailClick(emailTargetLeader);
+                setIsEmailModalOpen(false);
+              }}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Mail className="w-4 h-4" />
+              Open in Gmail
+            </button>
+          </div>
         </div>
       </Modal>
     </>
