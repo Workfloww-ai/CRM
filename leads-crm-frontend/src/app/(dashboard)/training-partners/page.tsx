@@ -554,7 +554,8 @@ export default function TrainingPartnersPage() {
     }
 
     const subject = "Turning your content into recurring transformation revenue with Workfloww.ai";
-    const body = `Hi ${trainingPartner.first_name || 'there'},
+    const firstName = trainingPartner.first_name ? trainingPartner.first_name.charAt(0).toUpperCase() + trainingPartner.first_name.slice(1) : 'there';
+    const body = `Hi ${firstName},
 
 Most enterprise training companies deliver high-impact frameworks during a two-day workshop, only to see client adoption drop by week three. When the engagement ends at the workshop door, you miss out on the long-term retainers and transformation budgets enterprise clients routinely allocate.
 
