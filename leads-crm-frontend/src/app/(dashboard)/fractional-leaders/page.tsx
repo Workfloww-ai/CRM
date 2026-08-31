@@ -82,7 +82,7 @@ function formatUserName(fullName: string | null | undefined) {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
-  
+
   if (!text || text === '—') return null;
 
   return (
@@ -557,7 +557,7 @@ export default function FractionalLeadersPage() {
 
     const exportTypesQuery = exportTypes.join(',')
     const urlStr = exportTypesQuery ? `${API_URL}/fractional-leaders/export?export_type=${exportTypesQuery}` : `${API_URL}/fractional-leaders/export`
-    
+
     const res = await fetch(urlStr, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -575,23 +575,22 @@ export default function FractionalLeadersPage() {
   const handleGmailClick = (leader: FractionalLeader) => {
     const to = leader.email || '';
     const subject = "Monetizing your CXO IP beyond billable hours";
-    const firstName = leader.first_name || '';
-    const body = `Hi ${firstName},
-Most fractional CXOs design high-impact strategic playbooks, only to watch client execution stall the moment they step out of the room. When engagements stay tied purely to advisory hours, you hit a natural capacity ceiling and miss out on the long-term, enterprise-wide transformation budgets CEOs routinely allocate.
-I’m Manish, founder at workfloww.ai (Ex EY, Airtel, Maersk, Mahindra). We built Lucid, an AI enterprise capability execution platform that fractional leaders and executive advisors use as their dedicated technology layer. By backing your strategic frameworks with our platform, you bridge the gap between executive advisory and daily operational execution positioning your practice as an end-to-end business transformation partner.
-What’s in it for your top line:
-Scale Multi-Client ARR: Uncap your billable hours. Productize your playbooks and frameworks into automated AI workflows, earning recurring platform and enablement retainers across multiple enterprise clients simultaneously.
-Command 3x–5x Larger Mandates: Move from selling fractional hours to capturing transformation budgets, backed by real-time execution analytics and readiness scores that CEOs and Boards readily fund.
-Lock in Stickier Retainers: Stop client churn. Our AI platform drives daily simulation and workplace application, delivering undeniable proof of execution ROI that protects and extends your contracts.
-Software Margins, Zero Tech CapEx: Monetize like a SaaS business with zero engineering cost. You retain 100% client equity, IP ownership, and pricing control while our AI platform powers the delivery behind the scenes.
+    const firstName = leader.first_name ? leader.first_name.charAt(0).toUpperCase() + leader.first_name.slice(1) : '';
+    const body = `Hi ${firstName},\n\nMost fractional CXOs design high-impact strategic playbooks, only to watch client execution stall the moment they step out of the room. When engagements stay tied purely to advisory hours, you hit a natural capacity ceiling and miss out on the long-term, enterprise-wide transformation budgets CEOs routinely allocate.
+I’m Manish, founder at workfloww.ai (Ex EY, Airtel, Maersk, Mahindra). We built Lucid, an AI enterprise capability execution platform that fractional leaders and executive advisors use as their dedicated technology layer. By backing your strategic frameworks with our platform, you bridge the gap between executive advisory and daily operational execution positioning your practice as an end-to-end business transformation partner.\n
+𝐖𝐡𝐚𝐭’𝐬 𝐢𝐧 𝐢𝘁 𝐟𝐨𝐫 𝐲𝐨𝐮𝐫 𝐭𝐨𝐩 𝐥𝐢𝐧𝐞:
+- 𝐒𝐜𝐚𝐥𝐞 𝐌𝐮𝐥𝐭𝐢-𝐂𝐥𝐢𝐞𝐧𝐭 𝐀𝐑𝐑: Uncap your billable hours. Productize your playbooks and frameworks into automated AI workflows, earning recurring platform and enablement retainers across multiple enterprise clients simultaneously.
+- 𝐂𝐨𝐦𝐦𝐚𝐧𝐝 𝟑𝐱–𝟓𝐱 𝐋𝐚𝐫𝐠𝐞𝐫 𝐌𝐚𝐧𝐝𝐚𝐭𝐞𝐬: Move from selling fractional hours to capturing transformation budgets, backed by real-time execution analytics and readiness scores that CEOs and Boards readily fund.
+- 𝐋𝐨𝐜𝐤 𝐢𝐧 𝐒𝐭𝐢𝐜𝐤𝐢𝐞𝐫 𝐑𝐞𝐭𝐚𝐢𝐧𝐞𝐫𝐬: Stop client churn. Our AI platform drives daily simulation and workplace application, delivering undeniable proof of execution ROI that protects and extends your contracts.
+- 𝐒𝐨𝐟𝐭𝐰𝐚𝐫𝐞 𝐌𝐚𝐫𝐠𝐢𝐧𝐬, 𝐙𝐞𝐫𝐨 𝐓𝐞𝐜𝐡 𝐂𝐚𝐩𝐄𝐱: Monetize like a SaaS business with zero engineering cost. You retain 100% client equity, IP ownership, and pricing control while our AI platform powers the delivery behind the scenes.\n
 We are currently onboarding an exclusive cohort of Fractional CXOs and executive advisors to co-package high-ticket transformation solutions for enterprise clients.
 Please note we are not offering you reseller or referral programme. We are offering you a AI tech layer which you can leverage in your consulting assignments.
-Would you be open to a 15-minute founder-to-founder conversation this week? I’d love to walk you through the platform and discuss how our platform can expand your advisory practice.
+Would you be open to a 15-minute founder-to-founder conversation this week? I’d love to walk you through the platform and discuss how our platform can expand your advisory practice.\n
 Best,
-Manish Chum
+𝐌𝐚𝐧𝐢𝐬𝐡 𝐂𝐡𝐮𝐦
 Founder, Workfloww.ai
 Mobile: +91-995882445`;
-    
+
     let url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (senderAccount) url += `&authuser=${encodeURIComponent(senderAccount)}`;
     if (ccEmails) url += `&cc=${encodeURIComponent(ccEmails)}`;
@@ -781,7 +780,7 @@ Mobile: +91-995882445`;
                     </button>
                   )}
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                   {selectedLeaders.length > 0 && profile?.role_level && profile.role_level >= 1 ? (
                     <button
@@ -934,7 +933,7 @@ Mobile: +91-995882445`;
                           </>
                         )}
                       </th>
-                      
+
                       <th scope="col" className="px-3 py-2 text-left align-top relative">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-fit">
                           <div className="cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded flex items-center" onClick={() => handleSort('domain')}>
@@ -993,7 +992,7 @@ Mobile: +91-995882445`;
                           </>
                         )}
                       </th>
-                      
+
 
                       <th scope="col" className="px-3 py-2 text-left align-top">
                         <div className="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-800 transition-colors p-1 -ml-1 rounded w-fit" onClick={() => handleSort('status')}>
@@ -1052,14 +1051,14 @@ Mobile: +91-995882445`;
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           <div title={leader.title || ''}>{formatDesignation(leader.title)}</div>
                         </td>
-                        
+
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           {leader.domain || '—'}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           {leader.location || '—'}
                         </td>
-                        
+
 
                         <td className="px-3 py-3 ">
                           <div className="relative inline-block w-fit">
@@ -1273,7 +1272,7 @@ Mobile: +91-995882445`;
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
               />
             </div>
-            
+
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">LinkedIn URL</label>
               <input
@@ -1637,18 +1636,18 @@ Mobile: +91-995882445`;
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">From</label>
-            <input 
-              type="email" 
-              value={senderAccount} 
+            <input
+              type="email"
+              value={senderAccount}
               onChange={(e) => setSenderAccount(e.target.value)}
               className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">To</label>
-            <input 
-              type="email" 
-              value={emailTargetLeader?.email || ''} 
+            <input
+              type="email"
+              value={emailTargetLeader?.email || ''}
               readOnly
               className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-500 cursor-not-allowed"
             />
@@ -1659,9 +1658,9 @@ Mobile: +91-995882445`;
               <button type="button" onClick={() => setShowCcBcc(!showCcBcc)} className="text-xs text-brand-600 hover:underline">{showCcBcc ? 'Hide CC/BCC' : 'Show CC/BCC'}</button>
             </label>
             {showCcBcc && (
-              <input 
-                type="text" 
-                value={ccEmails} 
+              <input
+                type="text"
+                value={ccEmails}
                 onChange={(e) => setCcEmails(e.target.value)}
                 placeholder="comma-separated emails"
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
@@ -1671,9 +1670,9 @@ Mobile: +91-995882445`;
           {showCcBcc && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">BCC (optional)</label>
-              <input 
-                type="text" 
-                value={bccEmails} 
+              <input
+                type="text"
+                value={bccEmails}
                 onChange={(e) => setBccEmails(e.target.value)}
                 placeholder="comma-separated emails"
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
