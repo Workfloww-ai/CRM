@@ -453,7 +453,7 @@ export default function CompetitorsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={competitor.status === 'New' ? 'default' : 'secondary'} className="font-medium">{competitor.status}</Badge>
+                          <Badge status={competitor.status} />
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-xs text-gray-500 dark:text-neutral-400">
@@ -636,7 +636,7 @@ export default function CompetitorsPage() {
                   {activities.map(activity => (
                     <div key={activity.id} className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-                        {activity.type === 'note' ? <History className="w-4 h-4 text-gray-500" /> : <Badge className="w-2 h-2 p-0" variant="secondary" />}
+                        {activity.type === 'note' ? <History className="w-4 h-4 text-gray-500" /> : <div className="w-2 h-2 rounded-full bg-gray-400" />}
                       </div>
                       <div className="flex-1 bg-gray-50 dark:bg-neutral-900 p-3 rounded-xl rounded-tl-none">
                         <div className="flex items-center justify-between mb-1">
