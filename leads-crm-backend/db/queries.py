@@ -269,3 +269,63 @@ def get_training_partner_activities(client, training_partner_id: str):
 
 def create_training_partner_activity(client, activity_data: dict):
     return client.table("training_partner_activities").insert(activity_data).execute()
+
+# --- Competitors ---
+
+COMPETITOR_COLUMNS = "id, name, website, status, created_at, updated_at, deleted_at"
+
+def get_all_competitors(client):
+    return client.table('competitors').select(COMPETITOR_COLUMNS).is_('deleted_at', 'null').execute()
+
+def get_competitors_page(client, page=1, page_size=20, search=None, sort_by="created_at", sort_desc=True):
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+
+    query = client.table("competitors").select(f"{COMPETITOR_COLUMNS}, competitor_activities(created_at, profiles(full_name))", count="exact").is_("deleted_at", "null")
+    query = query.order("created_at", foreign_table="competitor_activities", desc=True).limit(1, foreign_table="competitor_activities")
+
+    if search:
+        p = f'%{search.replace(chr(34), "")}%'
+        query = query.or_(f'name.ilike."{p}",website.ilike."{p}"')
+
+    query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
+    query = query.range(start, end)
+    return query.execute()
+
+def create_competitor(client, data: dict):
+    return client.table("competitors").insert(data).execute()
+
+def update_competitor(client, id: str, data: dict):
+    return client.table("competitors").update(data).eq("id", id).execute()
+
+def delete_competitor(client, id: str):
+    from datetime import datetime, timezone
+    return client.table("competitors").update({"deleted_at": datetime.now(timezone.utc).isoformat()}).eq("id", id).execute()
+
+def get_competitor_activities(client, competitor_id: str):
+    cols = ACTIVITY_COLUMNS.replace('lead_id', 'competitor_id')
+    return client.table("competitor_activities").select(f"{cols}, profiles(full_name)").eq("competitor_id", competitor_id).order("created_at", desc=True).execute()
+
+def create_competitor_activity(client, activity_data: dict):
+    return client.table("competitor_activities").insert(activity_data).execute()
+
+def upload_document_to_storage(client, storage_path: str, file_bytes: bytes, content_type: str):
+    return client.storage.from_("documents").upload(storage_path, file_bytes, {"content-type": content_type})
+
+def create_document_record(client, doc_data: dict):
+    return client.table("documents").insert(doc_data).execute()
+
+def get_documents_by_folder(client, folder: str):
+    return client.table("documents").select("id, file_name, storage_path, folder, uploaded_by, created_at, profiles(full_name)").eq("folder", folder).is_("deleted_at", "null").order("created_at", desc=True).execute()
+
+def get_document(client, doc_id: str):
+    return client.table("documents").select("*").eq("id", doc_id).single().execute()
+
+def get_signed_document_url(client, storage_path: str, expires_in: int = 3600):
+    return client.storage.from_("documents").create_signed_url(storage_path, expires_in)
+
+def delete_document_from_storage(client, storage_path: str):
+    return client.storage.from_("documents").remove([storage_path])
+
+def delete_document_record(client, doc_id: str):
+    return client.table("documents").delete().eq("id", doc_id).execute()
