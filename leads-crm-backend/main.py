@@ -14,18 +14,20 @@ from db.queries import (
     get_lead_activities as db_get_lead_activities,
     get_all_investors, get_investors_page, create_investor, update_investor, delete_investor,
     get_all_fractional_leaders, get_fractional_leaders_page, create_fractional_leader, update_fractional_leader, delete_fractional_leader,
-    get_all_training_partners, get_training_partners_page, create_training_partner, update_training_partner, delete_training_partner
+    get_all_training_partners, get_training_partners_page, create_training_partner, update_training_partner, delete_training_partner,
+    get_all_competitors, get_competitors_page, create_competitor, update_competitor, delete_competitor, get_competitor_activities, create_competitor_activity
 )
-from db.queries import upload_file_to_storage, create_attachment_record, get_lead_attachments, get_attachment, get_signed_attachment_url, delete_file_from_storage, delete_attachment_record
+from db.queries import upload_file_to_storage, create_attachment_record, get_lead_attachments, get_attachment, get_signed_attachment_url, delete_file_from_storage, delete_attachment_record, upload_document_to_storage, create_document_record, get_documents_by_folder, get_document, get_signed_document_url, delete_document_from_storage, delete_document_record
 from models import (
     LeadCreate, LeadUpdate, NoteCreate,
     InvestorCreate, InvestorUpdate,
     FractionalLeaderCreate, FractionalLeaderUpdate,
-    TrainingPartnerCreate, TrainingPartnerUpdate
+    TrainingPartnerCreate, TrainingPartnerUpdate,
+    CompetitorCreate, CompetitorUpdate
 )
 from auth.permissions import require_admin, require_super_admin
 from auth.dependencies import get_current_user
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1256,6 +1258,163 @@ def get_tp_atts(): return []
 
 @app.post("/training-partners/{training_partner_id}/attachments")
 def add_tp_atts(): return []
+
+# --- Competitors ---
+
+@app.get("/competitors")
+def get_competitors(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_desc: Optional[bool] = True,
+    user=Depends(get_current_user)
+):
+    client = get_client_for_user(user.token)
+    db_sort_by = "created_at" if sort_by not in ["name", "website", "status"] else sort_by
+    response = get_competitors_page(client, page, page_size, search, db_sort_by, sort_desc)
+    return {"data": response.data, "total": response.count}
+
+@app.post("/competitors")
+def add_competitor(comp: CompetitorCreate, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = create_competitor(client, comp.dict(exclude_unset=True))
+    return res.data[0]
+
+@app.patch("/competitors/{id}")
+def edit_competitor(id: str, comp: CompetitorUpdate, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = update_competitor(client, id, comp.dict(exclude_unset=True))
+    if not res.data: raise HTTPException(404, "Competitor not found")
+    return res.data[0]
+
+@app.delete("/competitors/{id}")
+def rm_competitor(id: str, user=Depends(require_super_admin)):
+    client = get_client_for_user(user.token)
+    delete_competitor(client, id)
+    return {"status": "ok"}
+
+@app.get("/competitors/export")
+def export_competitors(request: Request, user=Depends(require_super_admin)):
+    client = get_client_for_user(user.token)
+    response = get_all_competitors(client)
+    if not response.data: return Response("No data", status_code=404)
+    import io, csv
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["id", "name", "website", "status", "created_at"])
+    writer.writeheader()
+    for row in response.data:
+        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=competitors_export.csv"},
+    )
+
+@app.get("/competitors/import-template-xlsx")
+def import_template_xlsx_competitors(request: Request, user=Depends(get_current_user)):
+    import io, xlsxwriter
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output)
+    worksheet = workbook.add_worksheet()
+    headers = ["name", "website"]
+    for col_num, data in enumerate(headers):
+        worksheet.write(0, col_num, data)
+    workbook.close()
+    output.seek(0)
+    return Response(
+        content=output.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=competitors_import_template.xlsx"},
+    )
+
+@app.post("/competitors/import")
+def import_competitors(file: UploadFile = File(...), user=Depends(get_current_user)):
+    import io, pandas as pd
+    client = get_client_for_user(user.token)
+    try:
+        contents = file.file.read()
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(contents))
+        elif file.filename.endswith('.xlsx'):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(400, "Invalid file format")
+        df = df.fillna("")
+        records = df.to_dict('records')
+        count = 0
+        for r in records:
+            if not r.get("name"): continue
+            payload = {"name": str(r["name"])}
+            if r.get("website"): payload["website"] = str(r["website"])
+            create_competitor(client, payload)
+            count += 1
+        return {"imported_count": count, "errors": []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/competitors/{competitor_id}/activities")
+def get_comp_acts(request: Request, competitor_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    response = get_competitor_activities(client, competitor_id)
+    return response.data
+
+@app.post("/competitors/{competitor_id}/notes")
+def add_comp_note(request: Request, competitor_id: str, data: dict, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    create_competitor_activity(client, {
+        "competitor_id": competitor_id, "user_id": user.id, "type": "note", "content": data.get("content", "")
+    })
+    return {"status": "ok"}
+
+@app.get("/competitors/{competitor_id}/attachments")
+def get_comp_atts(): return []
+
+@app.post("/competitors/{competitor_id}/attachments")
+def add_comp_atts(): return []
+
+@app.get("/documents")
+def get_all_documents(folder: str = Query(...), user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    response = get_documents_by_folder(client, folder)
+    return response.data
+
+from fastapi import Form
+@app.post("/documents/upload")
+def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=Depends(get_current_user)):
+    import uuid
+    client = get_client_for_user(user.token)
+    file_bytes = file.file.read()
+    unique_filename = f"{folder}/{uuid.uuid4()}_{file.filename}"
+    upload_document_to_storage(client, unique_filename, file_bytes, file.content_type)
+    doc_data = {
+        "folder": folder,
+        "file_name": file.filename,
+        "storage_path": unique_filename,
+        "uploaded_by": user.id
+    }
+    create_document_record(client, doc_data)
+    return {"status": "ok"}
+
+@app.get("/documents/{doc_id}/download")
+def download_document(doc_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    doc = get_document(client, doc_id)
+    storage_path = doc.data["storage_path"]
+    signed_url = get_signed_document_url(client, storage_path, expires_in=3600)
+    # Supabase python client create_signed_url returns a string if we are using an older version or dict if newer. Let's handle both.
+    url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
+    return {"url": url_str}
+
+@app.delete("/documents/{doc_id}")
+def delete_document(doc_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    doc = get_document(client, doc_id)
+    storage_path = doc.data["storage_path"]
+    delete_document_from_storage(client, storage_path)
+    delete_document_record(client, doc_id)
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn

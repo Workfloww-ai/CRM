@@ -561,18 +561,18 @@ Most enterprise training companies deliver high-impact frameworks during a two-d
 
 I’m Manish, founder – workfloww.ai. (Ex EY, airtel, Maersk, Mahindra). We’ve built an enterprise capability execution platform, Lucid, that training firms use as their dedicated technology layer. By combining your content with our platform, you can bridge the gap between classroom delivery and continuous on-the-job execution—positioning your firm as an end-to-end business transformation partner.
 
-What’s in it for your top line:
-Turn One-Off Invoicing into Predictable ARR: Stop resetting your pipeline to zero every month. Package your frameworks, simulation scenarios, and methodology into year-round capability workflows, earning recurring capability building retainers without adding facilitation hours.
-Command 3x–5x Larger Deal Sizes: Move from selling commodity "per-day workshops" to commanding high-ticket transformation mandates. Pitch CXOs and CHROs on sustained business impact, backed by automated execution data and skill readiness scores they can actually measure.
-Win Enterprise RFPs You Currently Lose to Big Tech: Qualify immediately for large-scale enterprise bids that mandate digital enablement, live practice, and continuous reinforcement—outcompeting legacy platforms without spending millions building your own software.
-Zero Tech Debt, 100% Brand Ownership: You keep your client equity, pricing control, and IP authority. Lucid operates as the silent, enterprise-grade engine under your hood, handling platform performance, scaling, and updates.
+𝐖𝐡𝐚𝐭’𝐬 𝐢𝐧 𝐢𝘁 𝐟𝐨𝐫 𝐲𝐨𝐮𝐫 𝐭𝐨𝐩 𝐥𝐢𝐧𝐞:
+- 𝐓𝐮𝐫𝐧 𝐎𝐧𝐞-𝐎𝐟𝐟 𝐈𝐧𝐯𝐨𝐢𝐜𝐢𝐧𝐠 𝐢𝐧𝐭𝐨 𝐏𝐫𝐞𝐝𝐢𝐜𝐭𝐚𝐛𝐥𝐞 𝐀𝐑𝐑: Stop resetting your pipeline to zero every month. Package your frameworks, simulation scenarios, and methodology into year-round capability workflows, earning recurring capability building retainers without adding facilitation hours.
+- 𝐂𝐨𝐦𝐦𝐚𝐧𝐝 𝟑𝐱–𝟓𝐱 𝐋𝐚𝐫𝐠𝐞𝐫 𝐃𝐞𝐚𝐥 𝐒𝐢𝐳𝐞𝐬: Move from selling commodity "per-day workshops" to commanding high-ticket transformation mandates. Pitch CXOs and CHROs on sustained business impact, backed by automated execution data and skill readiness scores they can actually measure.
+- 𝐖𝐢𝐧 𝐄𝐧𝐭𝐞𝐫𝐩𝐫𝐢𝐬𝐞 𝐑𝐅𝐏𝐬 𝐘𝐨𝐮 𝐂𝐮𝐫𝐫𝐞𝐧𝐭𝐥𝐲 𝐋𝐨𝐬𝐞 𝐭𝐨 𝐁𝐢𝐠 𝐓𝐞𝐜𝐡: Qualify immediately for large-scale enterprise bids that mandate digital enablement, live practice, and continuous reinforcement—outcompeting legacy platforms without spending millions building your own software.
+- 𝐙𝐞𝐫𝐨 𝐓𝐞𝐜𝐡 𝐃𝐞𝐛𝐭, 𝟏𝟎𝟎% 𝐁𝐫𝐚𝐧𝐝 𝐎𝐰𝐧𝐞𝐫𝐬𝐡𝐢𝐩: You keep your client equity, pricing control, and IP authority. Lucid operates as the silent, enterprise-grade engine under your hood, handling platform performance, scaling, and updates.
 
 We are currently onboarding a select cohort of forward-thinking training partners to co-create and take high-ticket capability solutions to enterprise clients.
 
 Would you be open to a 15-minute founder-to-founder conversation this week? I’d love to walk you through the platform and discuss how our partner revenue-share model can expand your margins.
 
 Best,
-Manish Chum
+𝐌𝐚𝐧𝐢𝐬𝐡 𝐂𝐡𝐮𝐦
 Founder, Workfloww.ai
 Mobile-+91- 995882445`;
 
@@ -1653,18 +1653,18 @@ Mobile-+91- 995882445`;
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">From</label>
-            <input 
-              type="email" 
-              value={senderAccount} 
+            <input
+              type="email"
+              value={senderAccount}
               onChange={(e) => setSenderAccount(e.target.value)}
               className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">To</label>
-            <input 
-              type="email" 
-              value={emailTargetPartner?.email || ''} 
+            <input
+              type="email"
+              value={emailTargetPartner?.email || ''}
               readOnly
               className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-500 cursor-not-allowed"
             />
@@ -1675,9 +1675,9 @@ Mobile-+91- 995882445`;
               <button type="button" onClick={() => setShowCcBcc(!showCcBcc)} className="text-xs text-brand-600 hover:underline">{showCcBcc ? 'Hide CC/BCC' : 'Show CC/BCC'}</button>
             </label>
             {showCcBcc && (
-              <input 
-                type="text" 
-                value={ccEmails} 
+              <input
+                type="text"
+                value={ccEmails}
                 onChange={(e) => setCcEmails(e.target.value)}
                 placeholder="comma-separated emails"
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"
@@ -1687,9 +1687,9 @@ Mobile-+91- 995882445`;
           {showCcBcc && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">BCC (optional)</label>
-              <input 
-                type="text" 
-                value={bccEmails} 
+              <input
+                type="text"
+                value={bccEmails}
                 onChange={(e) => setBccEmails(e.target.value)}
                 placeholder="comma-separated emails"
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-500"

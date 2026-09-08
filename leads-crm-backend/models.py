@@ -155,3 +155,15 @@ class TrainingPartnerUpdate(BaseModel):
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
+
+
+class CompetitorCreate(BaseModel):
+    name: str
+    website: Optional[str] = None
+    status: str = "New"
+
+
+class CompetitorUpdate(BaseModel):
+    name: Optional[str] = None
+    website: Optional[str] = None
+    status: Optional[str] = None
