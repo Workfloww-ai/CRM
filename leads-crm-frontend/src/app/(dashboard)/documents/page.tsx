@@ -34,7 +34,7 @@ const FOLDERS: FolderDef[] = [
   { id: 'training_partners', name: 'Training Partners', description: 'Partner training materials' },
   { id: 'investors', name: 'Investors', description: 'Investor relations documents' },
   { id: 'competitors', name: 'Competitors', description: 'Competitor analysis and files' },
-  { id: 'general', name: 'General', description: 'General workspace documents' },
+  { id: 'client_presentations', name: 'Client Presentations', description: 'Client Presentations documents' },
 ]
 
 export default function DocumentsPage() {
@@ -97,29 +97,39 @@ export default function DocumentsPage() {
     e.preventDefault()
     if (!activeFolder) return
     const formData = new FormData(e.target as HTMLFormElement)
-    const file = formData.get('file') as globalThis.File
-    if (!file || file.size === 0) {
-      alert('Please select a file to upload')
+    const files = formData.getAll('file') as globalThis.File[]
+    
+    const validFiles = files.filter(f => f && f.size > 0)
+    if (validFiles.length === 0) {
+      alert('Please select at least one file to upload')
       return
     }
-    
-    // Add folder to formData
-    formData.append('folder', activeFolder)
 
     setUploading(true)
     const token = await getToken()
-    if (!token) return
+    if (!token) {
+      setUploading(false)
+      return
+    }
+    
     try {
-      const res = await fetch(`${API_URL}/documents/upload`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
-      })
-      if (!res.ok) throw new Error(await res.text())
+      await Promise.all(validFiles.map(async (file) => {
+        const fileData = new FormData()
+        fileData.append('folder', activeFolder)
+        fileData.append('file', file)
+        
+        const res = await fetch(`${API_URL}/documents/upload`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: fileData
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }))
+      
       setIsUploadModalOpen(false)
       fetchDocuments(activeFolder)
     } catch (err: any) {
-      alert(err.message)
+      alert(err.message || 'Failed to upload one or more files')
     } finally {
       setUploading(false)
     }
@@ -253,7 +263,7 @@ export default function DocumentsPage() {
                   </button>
                   <h2 className="font-medium text-gray-900 dark:text-white">{FOLDERS.find(f => f.id === activeFolder)?.name} Files</h2>
                 </div>
-                
+
                 {loading ? (
                   <div className="p-8 text-center text-gray-500">Loading documents...</div>
                 ) : documents.length === 0 ? (
@@ -324,11 +334,12 @@ export default function DocumentsPage() {
       <Modal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} title="Upload Document">
         <form onSubmit={handleUpload} className="space-y-4 p-4">
           <div className="border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg p-8 text-center">
-            <input 
-              required 
-              type="file" 
-              name="file" 
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-900/20 dark:file:text-brand-400 dark:hover:file:bg-brand-900/40" 
+            <input
+              required
+              multiple
+              type="file"
+              name="file"
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-900/20 dark:file:text-brand-400 dark:hover:file:bg-brand-900/40"
             />
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-neutral-800">
