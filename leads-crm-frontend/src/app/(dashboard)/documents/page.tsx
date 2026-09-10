@@ -35,6 +35,8 @@ const FOLDERS: FolderDef[] = [
   { id: 'investors', name: 'Investors', description: 'Investor relations documents' },
   { id: 'competitors', name: 'Competitors', description: 'Competitor analysis and files' },
   { id: 'client_presentations', name: 'Client Presentations', description: 'Client Presentations documents' },
+  { id: 'ai_capability', name: 'AI Capability', description: 'AI Capability documents' },
+  { id: 'commercial_proposal', name: 'Commercial Proposal', description: 'Commercial Proposal documents' },
 ]
 
 export default function DocumentsPage() {
@@ -210,7 +212,12 @@ export default function DocumentsPage() {
           <div className="max-w-[1400px] mx-auto space-y-6">
             {!activeFolder ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {FOLDERS.filter(f => !f.parentId && (f.id !== 'investors' || profile?.role_level === 3)).map(folder => (
+                {FOLDERS.filter(f => {
+                  if (f.parentId) return false;
+                  if (f.id === 'investors' && profile?.role_level !== 3 && profile?.role_level !== 4) return false;
+                  if (f.id === 'commercial_proposal' && profile?.role_level !== 4) return false;
+                  return true;
+                }).map(folder => (
                   <button
                     key={folder.id}
                     onClick={() => setActiveFolder(folder.id)}
