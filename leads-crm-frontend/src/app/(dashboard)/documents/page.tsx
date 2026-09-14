@@ -146,6 +146,28 @@ export default function DocumentsPage() {
       })
       if (!res.ok) throw new Error('Failed to get download link')
       const data = await res.json()
+      
+      const link = document.createElement('a')
+      link.href = data.url
+      link.setAttribute('download', fileName)
+      link.target = '_blank'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err: any) {
+      alert(err.message)
+    }
+  }
+
+  const handlePreview = async (docId: string, fileName: string) => {
+    const token = await getToken()
+    if (!token) return
+    try {
+      const res = await fetch(`${API_URL}/documents/${docId}/download?preview=true`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) throw new Error('Failed to get preview link')
+      const data = await res.json()
       setViewerUrl(data.url)
       setViewerTitle(fileName)
     } catch (err: any) {
@@ -297,7 +319,7 @@ export default function DocumentsPage() {
                         {documents.map(doc => (
                           <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800/50 transition-colors">
                             <td className="px-6 py-4">
-                              <button onClick={() => handleDownload(doc.id, doc.file_name)} className="flex items-center gap-3 text-left hover:text-brand-600 transition-colors group outline-none">
+                              <button onClick={() => handlePreview(doc.id, doc.file_name)} className="flex items-center gap-3 text-left hover:text-brand-600 transition-colors group outline-none">
                                 {getFileIcon(doc.file_name)}
                                 <span className="font-medium text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">{doc.file_name}</span>
                               </button>
