@@ -510,9 +510,12 @@ def download_attachment(attachment_id: str, user=Depends(get_current_user)):
     record = get_attachment(client, attachment_id)
     storage_path = record.data["storage_path"]
 
-    signed_url = get_signed_attachment_url(client, storage_path)
+    signed_url = get_signed_attachment_url(client, storage_path, download=record.data.get("file_name"))
+    
+    # Handle both string and dict responses from Supabase python client
+    url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
 
-    return {"url": signed_url["signedURL"]}
+    return {"url": url_str}
 
 
 @app.delete("/attachments/{attachment_id}")
@@ -1398,11 +1401,12 @@ def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=
     return {"status": "ok"}
 
 @app.get("/documents/{doc_id}/download")
-def download_document(doc_id: str, user=Depends(get_current_user)):
+def download_document(doc_id: str, preview: bool = False, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     doc = get_document(client, doc_id)
     storage_path = doc.data["storage_path"]
-    signed_url = get_signed_document_url(client, storage_path, expires_in=3600)
+    download_name = None if preview else doc.data.get("file_name")
+    signed_url = get_signed_document_url(client, storage_path, expires_in=3600, download=download_name)
     # Supabase python client create_signed_url returns a string if we are using an older version or dict if newer. Let's handle both.
     url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
     return {"url": url_str}

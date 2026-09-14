@@ -102,8 +102,11 @@ def upload_file_to_storage(client, storage_path: str, file_bytes: bytes, content
     return client.storage.from_("lead-attachments").upload(storage_path, file_bytes, {"content-type": content_type})
 
 
-def get_signed_attachment_url(client, storage_path: str, expires_in: int = 60):
-    return client.storage.from_("lead-attachments").create_signed_url(storage_path, expires_in)
+def get_signed_attachment_url(client, storage_path: str, expires_in: int = 60, download: str = None):
+    options = {}
+    if download:
+        options["download"] = download
+    return client.storage.from_("lead-attachments").create_signed_url(storage_path, expires_in, options=options)
 
 
 def delete_file_from_storage(client, storage_path: str):
@@ -321,8 +324,11 @@ def get_documents_by_folder(client, folder: str):
 def get_document(client, doc_id: str):
     return client.table("documents").select("*").eq("id", doc_id).single().execute()
 
-def get_signed_document_url(client, storage_path: str, expires_in: int = 3600):
-    return client.storage.from_("documents").create_signed_url(storage_path, expires_in)
+def get_signed_document_url(client, storage_path: str, expires_in: int = 3600, download: str = None):
+    options = {}
+    if download:
+        options["download"] = download
+    return client.storage.from_("documents").create_signed_url(storage_path, expires_in, options=options)
 
 def delete_document_from_storage(client, storage_path: str):
     return client.storage.from_("documents").remove([storage_path])
