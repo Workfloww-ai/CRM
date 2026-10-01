@@ -46,6 +46,7 @@ from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from fastapi.responses import Response
 from openpyxl import load_workbook
+from openpyxl.styles import Font
 import os
 import re
 
@@ -538,8 +539,15 @@ def import_template_xlsx(request: Request, user=Depends(get_current_user)):
 
     ws.append(REQUIRED_COLUMNS)
 
+    red_font = Font(color="FF0000", bold=True)
+    bold_font = Font(bold=True)
     for col_idx, header in enumerate(REQUIRED_COLUMNS, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
+        cell = ws.cell(row=1, column=col_idx)
+        ws.column_dimensions[cell.column_letter].width = 18
+        if header in ["first_name", "status"]:
+            cell.font = red_font
+        else:
+            cell.font = bold_font
 
     status_col_index = REQUIRED_COLUMNS.index("status") + 1
     status_col_letter = ws.cell(row=1, column=status_col_index).column_letter
@@ -657,8 +665,15 @@ def import_template_xlsx_investors(request: Request, user=Depends(require_super_
     cols = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     ws.append(cols)
 
+    red_font = Font(color="FF0000", bold=True)
+    bold_font = Font(bold=True)
     for col_idx, header in enumerate(cols, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
+        cell = ws.cell(row=1, column=col_idx)
+        ws.column_dimensions[cell.column_letter].width = 18
+        if header in ["first_name", "status"]:
+            cell.font = red_font
+        else:
+            cell.font = bold_font
 
     status_col_index = cols.index("status") + 1
     status_col_letter = ws.cell(row=1, column=status_col_index).column_letter
@@ -866,8 +881,15 @@ def import_template_xlsx_fractional_leaders(request: Request, user=Depends(get_c
     cols = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
     ws.append(cols)
 
+    red_font = Font(color="FF0000", bold=True)
+    bold_font = Font(bold=True)
     for col_idx, header in enumerate(cols, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
+        cell = ws.cell(row=1, column=col_idx)
+        ws.column_dimensions[cell.column_letter].width = 18
+        if header in ["first_name", "status"]:
+            cell.font = red_font
+        else:
+            cell.font = bold_font
 
     status_col_index = cols.index("status") + 1
     status_col_letter = ws.cell(row=1, column=status_col_index).column_letter
@@ -1072,8 +1094,15 @@ def import_template_xlsx_training_partners(request: Request, user=Depends(get_cu
     cols = ['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency']
     ws.append(cols)
 
+    red_font = Font(color="FF0000", bold=True)
+    bold_font = Font(bold=True)
     for col_idx, header in enumerate(cols, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = 18
+        cell = ws.cell(row=1, column=col_idx)
+        ws.column_dimensions[cell.column_letter].width = 18
+        if header in ["first_name", "status"]:
+            cell.font = red_font
+        else:
+            cell.font = bold_font
 
     status_col_index = cols.index("status") + 1
     status_col_letter = ws.cell(row=1, column=status_col_index).column_letter
@@ -1322,8 +1351,13 @@ def import_template_xlsx_competitors(request: Request, user=Depends(get_current_
     workbook = xlsxwriter.Workbook(output)
     worksheet = workbook.add_worksheet()
     headers = ["name", "website"]
+    red_bold = workbook.add_format({'bold': True, 'font_color': 'red'})
+    bold = workbook.add_format({'bold': True})
     for col_num, data in enumerate(headers):
-        worksheet.write(0, col_num, data)
+        if data == "name":
+            worksheet.write(0, col_num, data, red_bold)
+        else:
+            worksheet.write(0, col_num, data, bold)
     workbook.close()
     output.seek(0)
     return Response(
