@@ -20,14 +20,17 @@ type Profile = {
     role_level: number
 }
 
-const STATUSES = ['New', 'Contacted', 'Follow-up', 'Won', 'Lost']
+const STATUSES = ['New', 'Contacted', 'Follow-up', 'Won', 'Lost', 'Hot Lead', 'Warm Lead', 'Cold Lead']
 
 const STATUS_DOT_COLORS: Record<string, string> = {
     New: 'bg-gray-400',
     Contacted: 'bg-blue-500',
     'Follow-up': 'bg-amber-500',
     Won: 'bg-green-500',
-    Lost: 'bg-red-500',
+    Lost: 'bg-gray-500',
+    'Hot Lead': 'bg-red-500',
+    'Warm Lead': 'bg-orange-500',
+    'Cold Lead': 'bg-cyan-500',
 }
 
 function fullName(lead: Lead) {
