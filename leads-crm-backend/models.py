@@ -16,6 +16,7 @@ class LeadCreate(BaseModel):
     function: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
@@ -35,6 +36,7 @@ class LeadUpdate(BaseModel):
     function: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
@@ -95,6 +97,7 @@ class FractionalLeaderCreate(BaseModel):
     location: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
@@ -114,6 +117,7 @@ class FractionalLeaderUpdate(BaseModel):
     location: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
@@ -133,6 +137,7 @@ class TrainingPartnerCreate(BaseModel):
     location: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
@@ -152,6 +157,7 @@ class TrainingPartnerUpdate(BaseModel):
     location: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
+    next_action_assignee: Optional[str] = None
     due_date: Optional[str] = None
     revenue: Optional[float] = None
     currency: Optional[str] = "INR"
