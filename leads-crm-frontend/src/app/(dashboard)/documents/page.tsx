@@ -37,6 +37,7 @@ const FOLDERS: FolderDef[] = [
   { id: 'client_presentations', name: 'Client Presentations', description: 'Client Presentations documents' },
   { id: 'ai_capability', name: 'AI Capability', description: 'AI Capability documents' },
   { id: 'commercial_proposal', name: 'Commercial Proposal', description: 'Commercial Proposal documents' },
+  { id: 'sales_reports', name: 'Sales Reports', description: 'Sales Reports and Analysis' },
 ]
 
 export default function DocumentsPage() {

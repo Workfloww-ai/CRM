@@ -4,7 +4,7 @@
 LEAD_COLUMNS = (
     "id, first_name, last_name, title, org, email, phone, phone_2, "
     "linkedin, location, industry, revenue, currency, status, "
-    "next_action, due_date, created_at, updated_at, deleted_at"
+    "next_action, next_action_assignee, due_date, created_at, updated_at, deleted_at"
 )
 PROFILE_COLUMNS = "id, full_name, email, role_level, created_at"
 ACTIVITY_COLUMNS = "id, lead_id, user_id, type, content, metadata, created_at"
@@ -43,6 +43,11 @@ def get_leads_page(client, page=1, page_size=20, search=None, name=None, org=Non
     if function:
         query = query.ilike("function", f"%{function}%")
 
+    if sort_by == "created_at":
+        query = query.order("due_date", desc=False, nullsfirst=False)
+        query = query.order("next_action_assignee", desc=False, nullsfirst=False)
+        query = query.order("next_action", desc=False, nullsfirst=False)
+    
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
     query = query.range(start, end)
     return query.execute()
@@ -181,7 +186,7 @@ def delete_investor(client, id: str):
 
 FRACTIONAL_LEADER_COLUMNS = (
     "id, first_name, last_name, title, email, phone, phone_2, domain, industry, "
-    "function, linkedin, location, revenue, currency, status, next_action, due_date, "
+    "function, linkedin, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
     "created_at, updated_at, deleted_at"
 )
 
@@ -200,6 +205,11 @@ def get_fractional_leaders_page(client, page=1, page_size=20, search=None, sort_
     if search:
         p = f'%{search.replace(chr(34), "")}%'
         query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",domain.ilike."{p}"')
+
+    if sort_by == "created_at":
+        query = query.order("due_date", desc=False, nullsfirst=False)
+        query = query.order("next_action_assignee", desc=False, nullsfirst=False)
+        query = query.order("next_action", desc=False, nullsfirst=False)
 
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
     query = query.range(start, end)
@@ -220,7 +230,7 @@ def delete_fractional_leader(client, id: str):
 
 TRAINING_PARTNER_COLUMNS = (
     "id, first_name, last_name, title, email, phone, phone_2, organization, industry, "
-    "function, linkedin, location, revenue, currency, status, next_action, due_date, "
+    "function, linkedin, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
     "created_at, updated_at, deleted_at"
 )
 
@@ -237,6 +247,11 @@ def get_training_partners_page(client, page=1, page_size=20, search=None, sort_b
     if search:
         p = f'%{search.replace(chr(34), "")}%'
         query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",organization.ilike."{p}"')
+
+    if sort_by == "created_at":
+        query = query.order("due_date", desc=False, nullsfirst=False)
+        query = query.order("next_action_assignee", desc=False, nullsfirst=False)
+        query = query.order("next_action", desc=False, nullsfirst=False)
 
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
     query = query.range(start, end)

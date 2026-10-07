@@ -23,6 +23,7 @@ type Lead = {
   location: string | null
   status: string
   next_action: string | null
+  next_action_assignee: string | null
   due_date: string | null
   revenue?: number | null
   currency?: string | null
@@ -39,6 +40,7 @@ function isUrgent(dueDateStr: string | null) {
 }
 
 type Profile = {
+  id: string
   full_name: string
   email: string
   role_level: number
@@ -203,7 +205,52 @@ export default function LeadsPage() {
   const [functionFilter, setFunctionFilter] = useState('')
   const [openFilter, setOpenFilter] = useState<'name' | 'org' | 'title' | 'location' | 'industry' | 'function' | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [profilesList, setProfilesList] = useState<Profile[]>([])
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null)
+  const [assigningTaskFor, setAssigningTaskFor] = useState<Lead | null>(null)
+  const [taskAction, setTaskAction] = useState('')
+  const [taskDueDate, setTaskDueDate] = useState('')
+  const [taskAssignee, setTaskAssignee] = useState('')
+
+  const openAssignTaskModal = (lead: Lead) => {
+    setAssigningTaskFor(lead)
+    setTaskAction(lead.next_action || '')
+    setTaskDueDate(lead.due_date || '')
+    setTaskAssignee(lead.next_action_assignee || '')
+  }
+
+  const saveTaskAssign = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!assigningTaskFor) return
+    const token = await getToken()
+    if (!token) return
+
+    const payload = {
+      next_action: taskAction || null,
+      due_date: taskDueDate || null,
+      next_action_assignee: taskAssignee || null
+    }
+
+    const res = await fetch(`${API_URL}/leads/${assigningTaskFor.id}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+
+    if (res.ok) {
+      setAssigningTaskFor(null)
+      fetchLeads()
+    } else {
+      alert('Failed to assign task')
+    }
+  }
+
+  useEffect(() => {
+    supabase.from('profiles').select('id, full_name, email, role_level').then(({ data }) => setProfilesList(data || []))
+  }, [])
 
   useEffect(() => {
     if (typeof window !== 'undefined' && leads.length > 0 && expandedLeadId === null) {
@@ -513,6 +560,8 @@ export default function LeadsPage() {
     const next_action = formData.get('next_action') as string
     const due_date = formData.get('due_date') as string
 
+    const next_action_assignee = formData.get('next_action_assignee') as string
+
     const token = await getToken()
     if (!token) {
       setIsSavingContact(false)
@@ -522,7 +571,8 @@ export default function LeadsPage() {
     const payload = {
       status,
       next_action: next_action || null,
-      due_date: due_date || null
+      due_date: due_date || null,
+      next_action_assignee: next_action_assignee || null
     }
 
     const res = await fetch(`${API_URL}/leads/${leadId}`, {
@@ -1168,10 +1218,30 @@ export default function LeadsPage() {
                             <Badge status={lead.status} />
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-sm">
-                          {lead.next_action && <div className="text-gray-900 dark:text-gray-200 font-medium whitespace-normal break-words" title={lead.next_action}>{lead.next_action}</div>}
-                          {lead.due_date && <div className={`text-xs mt-0.5 ${isUrgent(lead.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(lead.due_date).toLocaleDateString()}</div>}
-                          {!lead.next_action && !lead.due_date && <span className="text-gray-500 dark:text-gray-300">—</span>}
+                        <td 
+                          className="px-3 py-3 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors group/task"
+                          onClick={() => openAssignTaskModal(lead)}
+                        >
+                          <div className="flex flex-col gap-1">
+                            {lead.next_action ? (
+                              <div className="text-brand-600 dark:text-brand-400 font-medium whitespace-normal break-words" title={lead.next_action}>
+                                {lead.next_action}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 dark:text-gray-500 italic opacity-0 group-hover/task:opacity-100 transition-opacity">+ Assign Task</span>
+                            )}
+                            
+                            {(lead.next_action_assignee || lead.due_date) && (
+                              <div className="flex items-center gap-2 text-xs mt-0.5">
+                                {lead.next_action_assignee && (
+                                  <span className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300 px-1.5 py-0.5 rounded font-medium truncate max-w-[120px]" title={profilesList.find(p => p.id === lead.next_action_assignee)?.full_name}>
+                                    {profilesList.find(p => p.id === lead.next_action_assignee)?.full_name || 'User'}
+                                  </span>
+                                )}
+                                {lead.due_date && <span className={`${isUrgent(lead.due_date) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500'}`}>{new Date(lead.due_date).toLocaleDateString()}</span>}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-sm">
                           {lead.lead_activities && lead.lead_activities.length > 0 ? (
@@ -1438,6 +1508,63 @@ export default function LeadsPage() {
       </Modal>
 
       <Modal
+        isOpen={assigningTaskFor !== null}
+        onClose={() => setAssigningTaskFor(null)}
+        title="Assign Task"
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={saveTaskAssign} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Task / Next Action</label>
+            <input
+              required
+              placeholder="e.g. Follow up email"
+              value={taskAction}
+              onChange={(e) => setTaskAction(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Assign To</label>
+            <select
+              value={taskAssignee}
+              onChange={(e) => setTaskAssignee(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+            >
+              <option value="">-- Unassigned --</option>
+              {profilesList.map(p => (
+                <option key={p.id} value={p.id}>{p.full_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Due Date</label>
+            <input
+              type="date"
+              value={taskDueDate}
+              onChange={(e) => setTaskDueDate(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+            />
+          </div>
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800">
+            <button
+              type="button"
+              onClick={() => setAssigningTaskFor(null)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 rounded-lg transition-colors border border-gray-200 dark:border-neutral-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors shadow-sm"
+            >
+              Save Task
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
         isOpen={expandedLeadId !== null}
         onClose={() => {
           setExpandedLeadId(null)
@@ -1597,7 +1724,7 @@ export default function LeadsPage() {
                     {isSavingContact ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Updates
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Status</label>
                     <select
@@ -1613,6 +1740,19 @@ export default function LeadsPage() {
                       <option>Hot Lead</option>
                       <option>Warm Lead</option>
                       <option>Cold Lead</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Assign To</label>
+                    <select
+                      name="next_action_assignee"
+                      defaultValue={expandedLead.next_action_assignee || ''}
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg text-sm font-medium text-gray-900 dark:text-white focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm"
+                    >
+                      <option value="">-- Unassigned --</option>
+                      {profilesList.map(p => (
+                        <option key={p.id} value={p.id}>{p.full_name}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
