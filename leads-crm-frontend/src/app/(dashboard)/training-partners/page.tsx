@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail, CornerUpRight } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type TrainingPartner = {
@@ -105,6 +105,65 @@ export default function TrainingPartnersPage() {
   const [trainingPartners, setTrainingPartners] = useState<TrainingPartner[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [shiftingId, setShiftingId] = useState<string | null>(null)
+
+  async function handleShiftTrainingPartner(partner: TrainingPartner, target: 'Direct Channel' | 'Fractional Leader') {
+    const confirmed = confirm(`Are you sure you want to shift this training partner to ${target}?`)
+    if (!confirmed) return
+
+    setShiftingId(partner.id)
+    const token = await getToken()
+    if (!token) {
+      setShiftingId(null)
+      return
+    }
+
+    const endpoint = target === 'Direct Channel' ? '/leads' : '/fractional-leaders'
+    
+    const payload: any = {
+      first_name: partner.first_name,
+      last_name: partner.last_name,
+      title: partner.title,
+      industry: partner.industry,
+      function: partner.function,
+      email: partner.email,
+      phone: partner.phone,
+      phone_2: partner.phone_2,
+      linkedin: partner.linkedin,
+      location: partner.location,
+      status: partner.status,
+      next_action: partner.next_action,
+      due_date: partner.due_date,
+      revenue: partner.revenue,
+      currency: partner.currency
+    }
+
+    if (target === 'Direct Channel') {
+      payload.org = partner.organization
+    } else {
+      payload.domain = partner.organization
+    }
+
+    const createRes = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (createRes.ok) {
+      await fetch(`${API_URL}/training-partners/${partner.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      fetchTrainingPartners()
+    } else {
+      alert(`Failed to shift training partner to ${target}`)
+    }
+    setShiftingId(null)
+  }
   const [isAddTrainingPartnerModalOpen, setIsAddTrainingPartnerModalOpen] = useState(false)
 
   const [firstName, setFirstName] = useState('')
@@ -1025,6 +1084,7 @@ Mobile-+91- 995882445`;
                           Last Contacted
                         </div>
                       </th>
+                      <th scope="col" className="px-3 py-2 text-right align-top w-12"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
@@ -1113,6 +1173,22 @@ Mobile-+91- 995882445`;
                           ) : (
                             <span className="text-gray-500 dark:text-gray-300">—</span>
                           )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="relative inline-block group/dropdown">
+                            <button className="text-gray-400 hover:text-brand-600 transition-colors p-1 rounded hover:bg-brand-50 dark:hover:bg-brand-900/20" title="Shift to...">
+                              {shiftingId === trainingPartner.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CornerUpRight className="w-4 h-4" />}
+                            </button>
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-lg shadow-lg opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible transition-all z-10 flex flex-col p-1 text-left">
+                              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Shift to:</div>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftTrainingPartner(trainingPartner, 'Direct Channel') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Direct Channel
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftTrainingPartner(trainingPartner, 'Fractional Leader') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Fractional Leader
+                              </button>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ))}

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { API_URL } from '@/lib/api'
 
-type Lead = {
+type PipelineItem = {
     id: string
     first_name: string
     last_name: string | null
@@ -12,6 +12,7 @@ type Lead = {
     status: string
     revenue: number | null
     currency: string | null
+    type: 'Direct Channel' | 'Training Partner' | 'Fractional Leader'
 }
 
 type Profile = {
@@ -33,8 +34,8 @@ const STATUS_DOT_COLORS: Record<string, string> = {
     'Cold Lead': 'bg-cyan-500',
 }
 
-function fullName(lead: Lead) {
-    return [lead.first_name, lead.last_name].filter(Boolean).join(' ')
+function fullName(item: PipelineItem) {
+    return [item.first_name, item.last_name].filter(Boolean).join(' ')
 }
 
 function formatRevenue(revenue: number | null, currency: string | null) {
@@ -54,9 +55,10 @@ function formatRevenue(revenue: number | null, currency: string | null) {
 }
 
 export default function PipelinePage() {
-    const [leads, setLeads] = useState<Lead[]>([])
+    const [items, setItems] = useState<PipelineItem[]>([])
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
+    const [typeFilter, setTypeFilter] = useState<'All' | 'Direct Channel' | 'Training Partner' | 'Fractional Leader'>('All')
 
     async function getToken() {
         const { data } = await supabase.auth.getSession()
@@ -68,8 +70,14 @@ export default function PipelinePage() {
             const token = await getToken()
             if (!token) return
 
-            const [leadsRes, profileRes] = await Promise.all([
+            const [leadsRes, tpRes, flRes, profileRes] = await Promise.all([
                 fetch(`${API_URL}/leads?page=1&page_size=1000`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_URL}/training-partners?page=1&page_size=1000`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_URL}/fractional-leaders?page=1&page_size=1000`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
                 fetch(`${API_URL}/me`, {
@@ -77,10 +85,55 @@ export default function PipelinePage() {
                 }),
             ])
 
+            let allItems: PipelineItem[] = []
+
             if (leadsRes.ok) {
                 const data = await leadsRes.json()
-                setLeads(data.leads)
+                const mapped = data.leads.map((l: any) => ({
+                    id: l.id,
+                    first_name: l.first_name,
+                    last_name: l.last_name,
+                    org: l.org,
+                    status: l.status,
+                    revenue: l.revenue,
+                    currency: l.currency,
+                    type: 'Direct Channel' as const
+                }))
+                allItems = [...allItems, ...mapped]
             }
+
+            if (tpRes.ok) {
+                const data = await tpRes.json()
+                const mapped = data.data.map((tp: any) => ({
+                    id: tp.id,
+                    first_name: tp.first_name,
+                    last_name: tp.last_name,
+                    org: tp.organization,
+                    status: tp.status,
+                    revenue: tp.revenue,
+                    currency: tp.currency,
+                    type: 'Training Partner' as const
+                }))
+                allItems = [...allItems, ...mapped]
+            }
+
+            if (flRes.ok) {
+                const data = await flRes.json()
+                const mapped = data.data.map((fl: any) => ({
+                    id: fl.id,
+                    first_name: fl.first_name,
+                    last_name: fl.last_name,
+                    org: fl.domain,
+                    status: fl.status,
+                    revenue: fl.revenue,
+                    currency: fl.currency,
+                    type: 'Fractional Leader' as const
+                }))
+                allItems = [...allItems, ...mapped]
+            }
+
+            setItems(allItems)
+
             if (profileRes.ok) {
                 setProfile(await profileRes.json())
             }
@@ -100,32 +153,48 @@ export default function PipelinePage() {
     return (
         <>
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <header className="h-16 px-6 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center shrink-0">
+                <header className="h-16 px-6 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between shrink-0">
                     <h1 className="text-xl font-semibold">Pipeline</h1>
+                    
+                    <select
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value as any)}
+                        className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                        <option value="All">All Types</option>
+                        <option value="Direct Channel">Direct Channels</option>
+                        <option value="Training Partner">Training Partners</option>
+                        <option value="Fractional Leader">Fractional Leaders</option>
+                    </select>
                 </header>
 
                 <div className="flex-1 overflow-x-auto p-6">
                     <div className="flex gap-4 h-full">
                         {STATUSES.map((status) => {
-                            const columnLeads = leads.filter((l) => l.status === status)
+                            const columnItems = items.filter((l) => l.status === status && (typeFilter === 'All' || l.type === typeFilter))
                             return (
                                 <div key={status} className="flex-shrink-0 w-64 flex flex-col">
                                     <div className="flex items-center gap-2 mb-3 px-1">
                                         <span className={`w-2 h-2 rounded-full ${STATUS_DOT_COLORS[status]}`}></span>
                                         <span className="text-sm font-semibold text-gray-900 dark:text-white">{status}</span>
-                                        <span className="text-xs text-gray-400">{columnLeads.length}</span>
+                                        <span className="text-xs text-gray-400">{columnItems.length}</span>
                                     </div>
                                     <div className="flex-1 space-y-2 overflow-y-auto">
-                                        {columnLeads.map((lead) => (
+                                        {columnItems.map((item) => (
                                             <div
-                                                key={lead.id}
-                                                className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg p-3 shadow-sm"
+                                                key={`${item.type}-${item.id}`}
+                                                className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-lg p-3 shadow-sm flex flex-col gap-1"
                                             >
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">{fullName(lead)}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{lead.org || '—'}</div>
-                                                {formatRevenue(lead.revenue, lead.currency) && (
-                                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mt-2">
-                                                        {formatRevenue(lead.revenue, lead.currency)}
+                                                <div>
+                                                    <div className="text-sm font-medium text-gray-900 dark:text-white">{fullName(item)}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{item.org || '—'}</div>
+                                                </div>
+                                                <div className="text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
+                                                    {item.type}
+                                                </div>
+                                                {formatRevenue(item.revenue, item.currency) && (
+                                                    <div className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
+                                                        {formatRevenue(item.revenue, item.currency)}
                                                     </div>
                                                 )}
                                             </div>

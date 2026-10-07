@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, Settings, LogOut, Kanban, ListTodo, ChevronLeft, ChevronRight, Building2, Folder } from 'lucide-react'
+import { LayoutDashboard, Users, Settings, LogOut, Kanban, ListTodo, ChevronLeft, ChevronRight, Building2, Folder, Network, Briefcase, GraduationCap, Target, Coins } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -55,8 +55,8 @@ export function Sidebar({ profile }: SidebarProps) {
           title={isCollapsed ? "Leads" : ""}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/leads' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
-          <Users className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
-          {!isCollapsed && <span>Leads</span>}
+          <Network className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          {!isCollapsed && <span>Direct Channels</span>}
         </Link>
         <Link
           href="/pipeline"
@@ -87,7 +87,7 @@ export function Sidebar({ profile }: SidebarProps) {
           title={isCollapsed ? "Fractional Leaders" : ""}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/fractional-leaders' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
-          <Users className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          <Briefcase className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
           {!isCollapsed && <span>Fractional Leaders</span>}
         </Link>
         <Link
@@ -95,7 +95,7 @@ export function Sidebar({ profile }: SidebarProps) {
           title={isCollapsed ? "Training Partners" : ""}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/training-partners' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
-          <Users className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          <GraduationCap className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
           {!isCollapsed && <span>Training Partners</span>}
         </Link>
         <Link
@@ -103,7 +103,7 @@ export function Sidebar({ profile }: SidebarProps) {
           title={isCollapsed ? "Competitors" : ""}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/competitors' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
-          <Users className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          <Target className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
           {!isCollapsed && <span>Competitors</span>}
         </Link>
         {profile && profile.role_level >= 2 && (
@@ -112,7 +112,7 @@ export function Sidebar({ profile }: SidebarProps) {
             title={isCollapsed ? "Investors" : ""}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/investors' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
           >
-            <Users className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+            <Coins className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
             {!isCollapsed && <span>Investors</span>}
           </Link>
         )}
