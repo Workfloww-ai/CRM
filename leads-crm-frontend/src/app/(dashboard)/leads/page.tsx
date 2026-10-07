@@ -1101,6 +1101,9 @@ export default function LeadsPage() {
                               <option>Follow-up</option>
                               <option>Won</option>
                               <option>Lost</option>
+                              <option>Hot Lead</option>
+                              <option>Warm Lead</option>
+                              <option>Cold Lead</option>
                             </select>
                             <Badge status={lead.status} />
                           </div>
@@ -1240,6 +1243,12 @@ export default function LeadsPage() {
                 <option value="Follow-up">Follow-up</option>
                 <option value="Won">Won</option>
                 <option value="Lost">Lost</option>
+                <option value="Hot Lead">Hot Lead</option>
+                <option value="Warm Lead">Warm Lead</option>
+                <option value="Cold Lead">Cold Lead</option>
+                <option value="Hot Lead">Hot Lead</option>
+                <option value="Warm Lead">Warm Lead</option>
+                <option value="Cold Lead">Cold Lead</option>
               </select>
             </div>
             <div>
@@ -1525,6 +1534,9 @@ export default function LeadsPage() {
                       <option>Follow-up</option>
                       <option>Won</option>
                       <option>Lost</option>
+                      <option>Hot Lead</option>
+                      <option>Warm Lead</option>
+                      <option>Cold Lead</option>
                     </select>
                   </div>
                   <div>

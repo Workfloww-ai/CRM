@@ -1088,6 +1088,9 @@ Mobile-+91- 995882445`;
                               <option>Follow-up</option>
                               <option>Won</option>
                               <option>Lost</option>
+                              <option>Hot Lead</option>
+                              <option>Warm Lead</option>
+                              <option>Cold Lead</option>
                             </select>
                             <Badge status={trainingPartner.status} />
                           </div>
@@ -1225,6 +1228,12 @@ Mobile-+91- 995882445`;
                 <option value="Follow-up">Follow-up</option>
                 <option value="Won">Won</option>
                 <option value="Lost">Lost</option>
+                <option value="Hot Lead">Hot Lead</option>
+                <option value="Warm Lead">Warm Lead</option>
+                <option value="Cold Lead">Cold Lead</option>
+                <option value="Hot Lead">Hot Lead</option>
+                <option value="Warm Lead">Warm Lead</option>
+                <option value="Cold Lead">Cold Lead</option>
               </select>
             </div>
             <div>
@@ -1522,6 +1531,9 @@ Mobile-+91- 995882445`;
                       <option>Follow-up</option>
                       <option>Won</option>
                       <option>Lost</option>
+                      <option>Hot Lead</option>
+                      <option>Warm Lead</option>
+                      <option>Cold Lead</option>
                     </select>
                   </div>
                   <div>
