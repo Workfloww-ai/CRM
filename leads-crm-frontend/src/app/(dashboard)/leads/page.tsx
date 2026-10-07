@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, CornerUpRight } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type Lead = {
@@ -105,6 +105,65 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [shiftingLeadId, setShiftingLeadId] = useState<string | null>(null)
+
+  async function handleShiftLead(lead: Lead, target: 'Training Partner' | 'Fractional Leader') {
+    const confirmed = confirm(`Are you sure you want to shift this direct channel to ${target}?`)
+    if (!confirmed) return
+
+    setShiftingLeadId(lead.id)
+    const token = await getToken()
+    if (!token) {
+      setShiftingLeadId(null)
+      return
+    }
+
+    const endpoint = target === 'Training Partner' ? '/training-partners' : '/fractional-leaders'
+    
+    const payload: any = {
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      title: lead.title,
+      industry: lead.industry,
+      function: lead.function,
+      email: lead.email,
+      phone: lead.phone,
+      phone_2: lead.phone_2,
+      linkedin: lead.linkedin,
+      location: lead.location,
+      status: lead.status,
+      next_action: lead.next_action,
+      due_date: lead.due_date,
+      revenue: lead.revenue,
+      currency: lead.currency
+    }
+
+    if (target === 'Training Partner') {
+      payload.organization = lead.org
+    } else {
+      payload.domain = lead.org
+    }
+
+    const createRes = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (createRes.ok) {
+      await fetch(`${API_URL}/leads/${lead.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      fetchLeads()
+    } else {
+      alert(`Failed to shift direct channel to ${target}`)
+    }
+    setShiftingLeadId(null)
+  }
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false)
 
   const [firstName, setFirstName] = useState('')
@@ -516,7 +575,7 @@ export default function LeadsPage() {
   }
 
   async function handleDelete(leadId: string) {
-    const confirmed = confirm('Delete this lead? This cannot be undone.')
+    const confirmed = confirm('Delete this direct channel? This cannot be undone.')
     if (!confirmed) return
 
     const token = await getToken()
@@ -532,7 +591,7 @@ export default function LeadsPage() {
 
   async function handleBulkDelete() {
     if (selectedLeads.length === 0) return
-    const confirmed = confirm(`Delete ${selectedLeads.length} leads? This cannot be undone.`)
+    const confirmed = confirm(`Delete ${selectedLeads.length} direct channels? This cannot be undone.`)
     if (!confirmed) return
 
     const token = await getToken()
@@ -701,7 +760,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Leads</h1>
+            <h1 className="text-xl font-semibold">Direct Channels</h1>
           </div>
         </header>
 
@@ -711,7 +770,7 @@ export default function LeadsPage() {
               {importProgress && (
                 <div className="bg-white dark:bg-neutral-900 border border-brand-200 dark:border-brand-800/50 p-4 rounded-lg shadow-sm">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="font-medium text-gray-900 dark:text-white">Importing Leads...</span>
+                    <span className="font-medium text-gray-900 dark:text-white">Importing Direct Channels...</span>
                     <span className="text-gray-500 dark:text-gray-400">{importProgress.processed} / {importProgress.total} ({importProgress.percentage}%)</span>
                   </div>
                   <div className="w-full bg-gray-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
@@ -722,7 +781,7 @@ export default function LeadsPage() {
 
               {importResult && (
                 <div className="bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 p-4 rounded-lg text-sm border border-brand-100 dark:border-brand-800/50">
-                  <p className="font-medium">Imported {importResult.imported_count} lead(s).</p>
+                  <p className="font-medium">Imported {importResult.imported_count} direct channel(s).</p>
                   {importResult.errors.length > 0 && (
                     <ul className="mt-2 space-y-1 text-red-600 dark:text-red-400">
                       {importResult.errors.map((err, i) => (
@@ -833,7 +892,7 @@ export default function LeadsPage() {
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-brand-600 border border-transparent rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    Add Lead
+                    Add Direct Channel
                   </button>
                 </div>
               </div>
@@ -1049,6 +1108,7 @@ export default function LeadsPage() {
                           Last Contacted
                         </div>
                       </th>
+                      <th scope="col" className="px-3 py-2 text-right align-top w-12"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
@@ -1127,12 +1187,28 @@ export default function LeadsPage() {
                             <span className="text-gray-500 dark:text-gray-300">—</span>
                           )}
                         </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="relative inline-block group/dropdown">
+                            <button className="text-gray-400 hover:text-brand-600 transition-colors p-1 rounded hover:bg-brand-50 dark:hover:bg-brand-900/20" title="Shift to...">
+                              {shiftingLeadId === lead.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CornerUpRight className="w-4 h-4" />}
+                            </button>
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-lg shadow-lg opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible transition-all z-10 flex flex-col p-1 text-left">
+                              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Shift to:</div>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftLead(lead, 'Training Partner') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Training Partner
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftLead(lead, 'Fractional Leader') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Fractional Leader
+                              </button>
+                            </div>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                     {leads.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
-                          No leads found matching your search.
+                          No direct channels found matching your search.
                         </td>
                       </tr>
                     )}
@@ -1169,7 +1245,7 @@ export default function LeadsPage() {
       <Modal
         isOpen={isAddLeadModalOpen}
         onClose={() => setIsAddLeadModalOpen(false)}
-        title="Add New Lead"
+        title="Add New Direct Channel"
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleAddLead} className="space-y-6">
@@ -1355,7 +1431,7 @@ export default function LeadsPage() {
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors shadow-sm"
             >
-              Create Lead
+              Create Direct Channel
             </button>
           </div>
         </form>

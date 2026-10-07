@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail, CornerUpRight } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type FractionalLeader = {
@@ -105,6 +105,65 @@ export default function FractionalLeadersPage() {
   const [leaders, setLeaders] = useState<FractionalLeader[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [shiftingId, setShiftingId] = useState<string | null>(null)
+
+  async function handleShiftFractionalLeader(leader: FractionalLeader, target: 'Direct Channel' | 'Training Partner') {
+    const confirmed = confirm(`Are you sure you want to shift this fractional leader to ${target}?`)
+    if (!confirmed) return
+
+    setShiftingId(leader.id)
+    const token = await getToken()
+    if (!token) {
+      setShiftingId(null)
+      return
+    }
+
+    const endpoint = target === 'Direct Channel' ? '/leads' : '/training-partners'
+    
+    const payload: any = {
+      first_name: leader.first_name,
+      last_name: leader.last_name,
+      title: leader.title,
+      industry: leader.industry,
+      function: leader.function,
+      email: leader.email,
+      phone: leader.phone,
+      phone_2: leader.phone_2,
+      linkedin: leader.linkedin,
+      location: leader.location,
+      status: leader.status,
+      next_action: leader.next_action,
+      due_date: leader.due_date,
+      revenue: leader.revenue,
+      currency: leader.currency
+    }
+
+    if (target === 'Direct Channel') {
+      payload.org = leader.domain
+    } else {
+      payload.organization = leader.domain
+    }
+
+    const createRes = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (createRes.ok) {
+      await fetch(`${API_URL}/fractional-leaders/${leader.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      fetchLeaders()
+    } else {
+      alert(`Failed to shift fractional leader to ${target}`)
+    }
+    setShiftingId(null)
+  }
   const [isAddLeaderModalOpen, setIsAddLeaderModalOpen] = useState(false)
 
   const [firstName, setFirstName] = useState('')
@@ -1009,6 +1068,7 @@ Mobile: +91-995882445`;
                           Last Contacted
                         </div>
                       </th>
+                      <th scope="col" className="px-3 py-2 text-right align-top w-12"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
@@ -1097,6 +1157,22 @@ Mobile: +91-995882445`;
                           ) : (
                             <span className="text-gray-500 dark:text-gray-300">—</span>
                           )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="relative inline-block group/dropdown">
+                            <button className="text-gray-400 hover:text-brand-600 transition-colors p-1 rounded hover:bg-brand-50 dark:hover:bg-brand-900/20" title="Shift to...">
+                              {shiftingId === leader.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CornerUpRight className="w-4 h-4" />}
+                            </button>
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-lg shadow-lg opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible transition-all z-10 flex flex-col p-1 text-left">
+                              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Shift to:</div>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftFractionalLeader(leader, 'Direct Channel') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Direct Channel
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); handleShiftFractionalLeader(leader, 'Training Partner') }} className="text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-md transition-colors text-gray-700 dark:text-gray-200 w-full">
+                                Training Partner
+                              </button>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ))}
