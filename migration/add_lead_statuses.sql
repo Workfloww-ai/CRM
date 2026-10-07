@@ -1,0 +1,3 @@
+ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'Hot Lead';
+ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'Warm Lead';
+ALTER TYPE lead_status ADD VALUE IF NOT EXISTS 'Cold Lead';
