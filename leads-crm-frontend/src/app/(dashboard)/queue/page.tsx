@@ -185,7 +185,7 @@ export default function QueuePage() {
                             className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                         >
                             <option value="All">All Types</option>
-                            <option value="Direct Channel">Direct Channels</option>
+                            <option value="Direct Channel">Channels</option>
                             <option value="Training Partner">Training Partners</option>
                             <option value="Fractional Leader">Fractional Leaders</option>
                         </select>

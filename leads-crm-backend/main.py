@@ -150,6 +150,7 @@ def get_leads(
     function: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
+    assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
     sort_desc = sort_dir == "desc" if sort_dir else False
@@ -163,7 +164,9 @@ def get_leads(
         db_sort_by = "status"
 
     client = get_client_for_user(user.token)
-    response = get_leads_page(client, page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc)
+    assignee_id = user.id if assigned_to_me else None
+    response = get_leads_page(client, page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc, assignee_id)
+    
     return {"leads": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/leads")
@@ -793,6 +796,7 @@ def get_fractional_leaders(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
+    assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
     sort_desc = sort_dir == "desc" if sort_dir else False
@@ -803,7 +807,9 @@ def get_fractional_leaders(
         db_sort_by = "status"
 
     client = get_client_for_user(user.token)
-    response = get_fractional_leaders_page(client, page, page_size, search, db_sort_by, sort_desc)
+    assignee_id = user.id if assigned_to_me else None
+    response = get_fractional_leaders_page(client, page, page_size, search, db_sort_by, sort_desc, assignee_id)
+
     return {"data": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/fractional-leaders")
@@ -1009,6 +1015,7 @@ def get_training_partners(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
+    assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
     sort_desc = sort_dir == "desc" if sort_dir else False
@@ -1019,7 +1026,9 @@ def get_training_partners(
         db_sort_by = "status"
 
     client = get_client_for_user(user.token)
-    response = get_training_partners_page(client, page, page_size, search, db_sort_by, sort_desc)
+    assignee_id = user.id if assigned_to_me else None
+    response = get_training_partners_page(client, page, page_size, search, db_sort_by, sort_desc, assignee_id)
+
     return {"data": response.data, "total": response.count, "page": page, "page_size": page_size}
 
 @app.post("/training-partners")
