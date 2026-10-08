@@ -3,7 +3,7 @@
 
 LEAD_COLUMNS = (
     "id, first_name, last_name, title, org, email, phone, phone_2, "
-    "linkedin, location, industry, revenue, currency, status, "
+    "linkedin, location, industry, function, revenue, currency, status, "
     "next_action, next_action_assignee, due_date, created_at, updated_at, deleted_at"
 )
 PROFILE_COLUMNS = "id, full_name, email, role_level, created_at"
@@ -16,7 +16,7 @@ def get_all_leads(client):
 
 
 def get_leads_page(client, page=1, page_size=20, search=None, name=None, org=None,
-                    title=None, location=None, industry=None, function=None, sort_by="created_at", sort_desc=True):
+                    title=None, location=None, industry=None, function=None, sort_by="created_at", sort_desc=True, assignee_id=None):
     start = (page - 1) * page_size
     end = start + page_size - 1
 
@@ -42,6 +42,8 @@ def get_leads_page(client, page=1, page_size=20, search=None, name=None, org=Non
         query = query.ilike("industry", f"%{industry}%")
     if function:
         query = query.ilike("function", f"%{function}%")
+    if assignee_id:
+        query = query.eq("next_action_assignee", assignee_id)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
@@ -193,7 +195,7 @@ FRACTIONAL_LEADER_COLUMNS = (
 def get_all_fractional_leaders(client):
     return client.table('fractional_leaders').select(FRACTIONAL_LEADER_COLUMNS).is_('deleted_at', 'null').execute()
 
-def get_fractional_leaders_page(client, page=1, page_size=20, search=None, sort_by="created_at", sort_desc=True):
+def get_fractional_leaders_page(client, page=1, page_size=20, search=None, sort_by="created_at", sort_desc=True, assignee_id=None):
     start = (page - 1) * page_size
     end = start + page_size - 1
 
@@ -205,6 +207,8 @@ def get_fractional_leaders_page(client, page=1, page_size=20, search=None, sort_
     if search:
         p = f'%{search.replace(chr(34), "")}%'
         query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",domain.ilike."{p}"')
+    if assignee_id:
+        query = query.eq("next_action_assignee", assignee_id)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
@@ -237,7 +241,7 @@ TRAINING_PARTNER_COLUMNS = (
 def get_all_training_partners(client):
     return client.table('training_partners').select(TRAINING_PARTNER_COLUMNS).is_('deleted_at', 'null').execute()
 
-def get_training_partners_page(client, page=1, page_size=20, search=None, sort_by="created_at", sort_desc=True):
+def get_training_partners_page(client, page=1, page_size=20, search=None, sort_by="created_at", sort_desc=True, assignee_id=None):
     start = (page - 1) * page_size
     end = start + page_size - 1
 
@@ -247,6 +251,8 @@ def get_training_partners_page(client, page=1, page_size=20, search=None, sort_b
     if search:
         p = f'%{search.replace(chr(34), "")}%'
         query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",organization.ilike."{p}"')
+    if assignee_id:
+        query = query.eq("next_action_assignee", assignee_id)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
