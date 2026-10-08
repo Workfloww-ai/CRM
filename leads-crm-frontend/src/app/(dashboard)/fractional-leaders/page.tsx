@@ -186,6 +186,7 @@ export default function FractionalLeadersPage() {
   const [functionField, setFunctionField] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [assignedToMe, setAssignedToMe] = useState(false)
   const [isExportPopoverOpen, setIsExportPopoverOpen] = useState(false)
   const [exportTypes, setExportTypes] = useState<string[]>(['number'])
   useEffect(() => {
@@ -313,6 +314,9 @@ export default function FractionalLeadersPage() {
       params.set('sort_by', sortConfig.key)
       params.set('sort_dir', sortConfig.direction)
     }
+    if (assignedToMe) {
+      params.set('assigned_to_me', 'true')
+    }
 
     const res = await fetch(`${API_URL}/fractional-leaders?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -328,7 +332,7 @@ export default function FractionalLeadersPage() {
     setLeaders(data.data)
     setTotalLeaders(data.total)
     setLoading(false)
-  }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
+  }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig, assignedToMe])
 
   async function fetchProfile() {
     const token = await getToken()
@@ -481,7 +485,7 @@ export default function FractionalLeadersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
+  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig, assignedToMe])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -808,10 +812,11 @@ Mobile: +91-995882445`;
 
   const expandedLead = leaders.find(l => l.id === expandedLeaderId)
 
-  const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null;
+  const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null || assignedToMe;
 
   const handleResetFiltersAndSort = () => {
     setSearch('')
+    setAssignedToMe(false)
     setNameFilter('')
     setCompanyFilter('')
     setDesignationFilter('')
@@ -878,6 +883,15 @@ Mobile: +91-995882445`;
                       className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors outline-none text-sm shadow-sm"
                     />
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={assignedToMe}
+                      onChange={(e) => setAssignedToMe(e.target.checked)}
+                      className="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">My Tasks</span>
+                  </label>
                   {hasActiveFiltersOrSort && (
                     <button
                       onClick={handleResetFiltersAndSort}
@@ -1485,7 +1499,6 @@ Mobile: +91-995882445`;
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Task / Next Action</label>
             <input
-              required
               placeholder="e.g. Follow up email"
               value={taskAction}
               onChange={(e) => setTaskAction(e.target.value)}

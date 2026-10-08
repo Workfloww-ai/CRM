@@ -186,6 +186,7 @@ export default function LeadsPage() {
   const [functionField, setFunctionField] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [assignedToMe, setAssignedToMe] = useState(false)
   const [isExportPopoverOpen, setIsExportPopoverOpen] = useState(false)
   const [exportTypes, setExportTypes] = useState<string[]>(['number'])
   useEffect(() => {
@@ -307,6 +308,9 @@ export default function LeadsPage() {
       params.set('sort_by', sortConfig.key)
       params.set('sort_dir', sortConfig.direction)
     }
+    if (assignedToMe) {
+      params.set('assigned_to_me', 'true')
+    }
 
     const res = await fetch(`${API_URL}/leads?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -327,7 +331,7 @@ export default function LeadsPage() {
     setLeads(data.leads)
     setTotalLeads(data.total)
     setLoading(false)
-  }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
+  }, [page, search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig, assignedToMe])
 
   async function fetchProfile() {
     const token = await getToken()
@@ -483,7 +487,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig])
+  }, [search, nameFilter, companyFilter, designationFilter, locationFilter, industryFilter, functionFilter, sortConfig, assignedToMe])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -785,10 +789,11 @@ export default function LeadsPage() {
 
   const expandedLead = leads.find(l => l.id === expandedLeadId)
 
-  const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null;
+  const hasActiveFiltersOrSort = search !== '' || nameFilter !== '' || companyFilter !== '' || designationFilter !== '' || locationFilter !== '' || industryFilter !== '' || functionFilter !== '' || sortConfig.key !== null || assignedToMe;
 
   const handleResetFiltersAndSort = () => {
     setSearch('')
+    setAssignedToMe(false)
     setNameFilter('')
     setCompanyFilter('')
     setDesignationFilter('')
@@ -810,7 +815,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Direct Channels</h1>
+            <h1 className="text-xl font-semibold">Channels</h1>
           </div>
         </header>
 
@@ -820,7 +825,7 @@ export default function LeadsPage() {
               {importProgress && (
                 <div className="bg-white dark:bg-neutral-900 border border-brand-200 dark:border-brand-800/50 p-4 rounded-lg shadow-sm">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="font-medium text-gray-900 dark:text-white">Importing Direct Channels...</span>
+                    <span className="font-medium text-gray-900 dark:text-white">Importing Channels...</span>
                     <span className="text-gray-500 dark:text-gray-400">{importProgress.processed} / {importProgress.total} ({importProgress.percentage}%)</span>
                   </div>
                   <div className="w-full bg-gray-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
@@ -855,6 +860,15 @@ export default function LeadsPage() {
                       className="w-full pl-10 pr-4 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors outline-none text-sm shadow-sm"
                     />
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={assignedToMe}
+                      onChange={(e) => setAssignedToMe(e.target.checked)}
+                      className="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">My Tasks</span>
+                  </label>
                   {hasActiveFiltersOrSort && (
                     <button
                       onClick={handleResetFiltersAndSort}
@@ -1278,7 +1292,7 @@ export default function LeadsPage() {
                     {leads.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
-                          No direct channels found matching your search.
+                          No channels found matching your search.
                         </td>
                       </tr>
                     )}
@@ -1517,7 +1531,6 @@ export default function LeadsPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Task / Next Action</label>
             <input
-              required
               placeholder="e.g. Follow up email"
               value={taskAction}
               onChange={(e) => setTaskAction(e.target.value)}
