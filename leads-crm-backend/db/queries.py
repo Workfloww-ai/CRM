@@ -356,3 +356,255 @@ def delete_document_from_storage(client, storage_path: str):
 
 def delete_document_record(client, doc_id: str):
     return client.table("documents").delete().eq("id", doc_id).execute()
+
+
+# =========================================================================
+# FLOWWIES HRMS QUERIES
+# =========================================================================
+
+HRMS_PROFILE_COLUMNS = (
+    "id, full_name, email, role_level, hrms_role, role_id, department, secondary_department, "
+    "primary_department_id, can_access_crm, manager_id, is_active, emp_code, avatar_color, dob, date_joined, "
+    "phone, personal_email, emergency_contact_name, emergency_contact_phone, "
+    "address, city, state, pin_code, bank_account_holder, bank_name, bank_account_number, "
+    "ifsc_code, upi_id, created_at"
+)
+
+def get_hrms_profile(client, user_id: str):
+    return client.table("profiles").select(HRMS_PROFILE_COLUMNS).eq("id", user_id).single().execute()
+
+def update_hrms_profile(client, user_id: str, data: dict):
+    return client.table("profiles").update(data).eq("id", user_id).execute()
+
+def get_all_team_members(client):
+    return client.table("profiles").select(HRMS_PROFILE_COLUMNS).order("full_name").execute()
+
+def update_team_member_admin(client, user_id: str, data: dict):
+    return client.table("profiles").update(data).eq("id", user_id).execute()
+
+def get_hrms_roles(client):
+    return client.table("hrms_roles").select("*").order("name").execute()
+
+def get_departments(client):
+    return client.table("departments").select("*").order("name").execute()
+
+def get_member_departments(client, user_id: str):
+    return client.table("profile_departments").select("department_id, departments(id, name)").eq("profile_id", user_id).execute()
+
+def sync_member_departments(client, user_id: str, dept_names: list):
+    dept_rows = client.table("departments").select("id, name").in_("name", dept_names).execute().data or []
+    if not dept_rows:
+        return
+    # Delete existing mappings
+    try:
+        client.table("profile_departments").delete().eq("profile_id", user_id).execute()
+    except Exception as e:
+        print("Warning: deleting profile_departments mapping failed:", e)
+
+    # Insert new mappings
+    new_entries = [{"profile_id": user_id, "department_id": d["id"]} for d in dept_rows]
+    try:
+        client.table("profile_departments").insert(new_entries).execute()
+    except Exception as e:
+        print("Warning: inserting into profile_departments failed (check RLS policy 007):", e)
+
+    # Update primary_department_id and textual department on profile
+    first_dept_id = dept_rows[0]["id"]
+    primary_name = dept_rows[0]["name"]
+    sec_name = dept_rows[1]["name"] if len(dept_rows) > 1 else None
+    has_growth = any(d["name"].lower() == "growth" for d in dept_rows)
+    try:
+        client.table("profiles").update({
+            "primary_department_id": first_dept_id,
+            "department": primary_name,
+            "secondary_department": sec_name,
+            "can_access_crm": has_growth
+        }).eq("id", user_id).execute()
+    except Exception as e:
+        if "company_department" in str(e) or "22P02" in str(e):
+            try:
+                client.table("profiles").update({
+                    "primary_department_id": first_dept_id,
+                    "department": primary_name.lower(),
+                    "secondary_department": sec_name,
+                    "can_access_crm": has_growth
+                }).eq("id", user_id).execute()
+            except Exception:
+                try:
+                    client.table("profiles").update({
+                        "primary_department_id": first_dept_id,
+                        "can_access_crm": has_growth
+                    }).eq("id", user_id).execute()
+                except Exception as inner_e:
+                    print("Warning: fallback department update failed:", inner_e)
+        else:
+            print("Warning: updating profile department info failed:", e)
+
+
+def get_leave_balance(client, user_id: str, year: int = None):
+    from datetime import datetime, timezone
+    if not year:
+        year = datetime.now(timezone.utc).year
+    res = client.table("leave_balances").select("*").eq("user_id", user_id).eq("year", year).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]
+    # Initialize default balance if not created
+    new_bal = {"user_id": user_id, "year": year, "casual_days": 8.0, "sick_days": 6.0, "earned_days": 12.0}
+    ins = client.table("leave_balances").insert(new_bal).execute()
+    return ins.data[0] if ins.data else new_bal
+
+def deduct_leave_balance(client, user_id: str, year: int, leave_type: str, days: float):
+    bal = get_leave_balance(client, user_id, year)
+    col = f"{leave_type.lower()}_days"
+    current = float(bal.get(col, 0) or 0)
+    updated = max(0.0, current - float(days))
+    return client.table("leave_balances").update({col: updated}).eq("user_id", user_id).eq("year", year).execute()
+
+def get_leave_requests(client, user_id: str = None):
+    query = client.table("leave_requests").select("*, profiles:profiles!leave_requests_user_id_fkey(full_name, avatar_color, department)")
+    if user_id:
+        query = query.eq("user_id", user_id)
+    return query.order("created_at", desc=True).execute()
+
+def get_calendar_leaves(client, start_date: str, end_date: str):
+    return client.table("leave_requests").select(
+        "id, user_id, leave_type, start_date, end_date, days_count, status, profiles:profiles!leave_requests_user_id_fkey(full_name, avatar_color, department)"
+    ).gte("end_date", start_date).lte("start_date", end_date).execute()
+
+def create_leave_request(client, data: dict):
+    return client.table("leave_requests").insert(data).execute()
+
+def update_leave_request_status(client, req_id: str, status: str, decided_by: str):
+    from datetime import datetime, timezone
+    return client.table("leave_requests").update({
+        "status": status,
+        "decided_by": decided_by,
+        "decided_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", req_id).execute()
+
+def get_reimbursements(client, user_id: str = None):
+    query = client.table("reimbursement_claims").select(
+        "*, profiles:profiles!reimbursement_claims_user_id_fkey(full_name, department, bank_account_holder, bank_name, bank_account_number, ifsc_code, upi_id)"
+    )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    return query.order("created_at", desc=True).execute()
+
+def create_reimbursement(client, data: dict):
+    return client.table("reimbursement_claims").insert(data).execute()
+
+def update_reimbursement_status(client, claim_id: str, status: str, approver_id: str):
+    from datetime import datetime, timezone
+    return client.table("reimbursement_claims").update({
+        "status": status,
+        "approved_by": approver_id,
+        "approved_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", claim_id).execute()
+
+def mark_reimbursement_paid(client, claim_id: str, paid_by: str):
+    from datetime import datetime, timezone
+    return client.table("reimbursement_claims").update({
+        "status": "paid",
+        "paid_by": paid_by,
+        "paid_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", claim_id).execute()
+
+def get_payslips(client, user_id: str = None):
+    query = client.table("payslips").select("*, profiles:profiles!payslips_user_id_fkey(full_name, department)")
+    if user_id:
+        query = query.eq("user_id", user_id)
+    return query.order("pay_period_date", desc=True).execute()
+
+def get_insurance_cover(client, user_id: str):
+    return client.table("insurance_cover").select("*").eq("user_id", user_id).execute()
+
+def get_company_policies(client):
+    return client.table("company_policies").select("*").order("sort_order", desc=False).execute()
+
+def update_company_policy(client, policy_id: str, body: str, updated_by: str):
+    from datetime import datetime, timezone
+    return client.table("company_policies").update({
+        "body": body,
+        "updated_by": updated_by,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }).eq("id", policy_id).execute()
+
+def get_company_holidays(client, year: int = None):
+    query = client.table("company_holidays").select("*").order("holiday_date", desc=False)
+    if year:
+        query = query.eq("year", year)
+    return query.execute()
+
+def add_company_holiday(client, name: str, holiday_date: str, year: int = None):
+    if not year:
+        year = int(holiday_date.split("-")[0])
+    return client.table("company_holidays").upsert({
+        "name": name,
+        "holiday_date": holiday_date,
+        "year": year
+    }, on_conflict="holiday_date").execute()
+
+def bulk_add_company_holidays(client, holidays: list):
+    payload = []
+    for h in holidays:
+        d = h.get("holiday_date")
+        y = h.get("year") or (int(d.split("-")[0]) if d else 2026)
+        payload.append({
+            "name": h.get("name"),
+            "holiday_date": d,
+            "year": y
+        })
+    return client.table("company_holidays").upsert(payload, on_conflict="holiday_date").execute()
+
+def delete_company_holiday(client, holiday_id: str):
+    return client.table("company_holidays").delete().eq("id", holiday_id).execute()
+
+def get_talent_of_the_month(client):
+    return client.table("talent_of_the_month").select(
+        "*, profiles:profiles!talent_of_the_month_user_id_fkey(full_name, department, avatar_color)"
+    ).eq("is_current", True).limit(1).execute()
+
+def cheer_talent(client, talent_id: str):
+    res = client.table("talent_of_the_month").select("cheers_count").eq("id", talent_id).single().execute()
+    count = (res.data.get("cheers_count") or 0) + 1 if res.data else 1
+    return client.table("talent_of_the_month").update({"cheers_count": count}).eq("id", talent_id).execute()
+
+def get_talent_nominations(client):
+    return client.table("talent_nominations").select(
+        "id, why_text, created_at, nominee:profiles!talent_nominations_nominee_id_fkey(id, full_name, department, avatar_color), nominator:profiles!talent_nominations_nominated_by_fkey(full_name)"
+    ).order("created_at", desc=True).execute()
+
+def create_talent_nomination(client, data: dict):
+    return client.table("talent_nominations").insert(data).execute()
+
+def crown_new_talent(client, user_id: str, month_year: str, why_text: str, crowned_by: str, nomination_id: str = None):
+    # Set existing current talent to false
+    client.table("talent_of_the_month").update({"is_current": False}).eq("is_current", True).execute()
+    # If a talent for this month_year already exists, remove or archive it
+    client.table("talent_of_the_month").update({"is_current": False}).eq("month_year", month_year).execute()
+    # Insert new talent
+    new_talent = {
+        "user_id": user_id,
+        "month_year": month_year,
+        "why_text": why_text,
+        "cheers_count": 0,
+        "is_current": True,
+        "crowned_by": crowned_by
+    }
+    res = client.table("talent_of_the_month").insert(new_talent).execute()
+    if nomination_id:
+        try:
+            client.table("talent_nominations").delete().eq("id", nomination_id).execute()
+        except Exception:
+            pass
+    return res
+
+def get_hall_of_flex(client):
+    return client.table("talent_of_the_month").select(
+        "id, month_year, why_text, cheers_count, created_at, profiles:profiles!talent_of_the_month_user_id_fkey(full_name, department, avatar_color)"
+    ).order("created_at", desc=True).execute()
+
+def delete_talent(client, talent_id: str):
+    return client.table("talent_of_the_month").delete().eq("id", talent_id).execute()
+
+

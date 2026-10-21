@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #FCFBFF;
+  --surface: #FFFFFF;
+  --ink: #0E0E1A;
+  --muted: #5B5878;
+  --v: #5B3DF5;
+  --vt: #EEEAFF;
+  --vs: #F7F5FF;
+  --vt2: #DCD3FF;
+  --bt: #DDEAFF;
+  --line: #E4DEFA;
+  --line2: #B8AAFB;
+  --shadow: rgba(91, 61, 245, 0.12);
+  --hard: #CFC6FF;
+  --display: "DM Sans", "Trebuchet MS", system-ui, sans-serif;
+  --body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+html {
+  scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 80px);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--display);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--v);
+  outline-offset: 3px;
+}
+
+.wrap {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Neo-brutalist Button styles */
+.flow-btn {
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--hard);
+  transition: transform 0.12s, box-shadow 0.12s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.flow-btn:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 var(--hard);
+}
+
+.flow-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--hard);
+}
+
+.flow-btn.pri {
+  background: var(--vt2);
+}
+
+.flow-btn.ok {
+  background: var(--bt);
+}
+
+.flow-btn.sm {
+  padding: 6px 13px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* Cards */
+.flow-card {
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 26px;
+  box-shadow: 0 10px 30px var(--shadow);
+  padding: 22px;
+}
+
+/* Form fields */
+.flow-field {
+  border: 2px solid var(--line2);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: var(--surface);
+  min-width: 0;
+  width: 100%;
+}
+
+.flow-field:focus {
+  outline: none;
+  border-color: var(--v);
+}
+
+/* Tags & badges */
+.flow-tag {
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 999px;
+  padding: 3px 12px;
+  white-space: nowrap;
+  border: 1.5px solid var(--line2);
+  display: inline-block;
+}
+
+.flow-tag.pending {
+  background: var(--vt);
+}
+
+.flow-tag.approved {
+  background: var(--bt);
+}
+
+.flow-tag.paid {
+  background: var(--vt2);
+}
+
+.flow-tag.declined {
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line2);
+  border-radius: 4px;
+}

@@ -25,8 +25,9 @@ from models import (
     TrainingPartnerCreate, TrainingPartnerUpdate,
     CompetitorCreate, CompetitorUpdate
 )
-from auth.permissions import require_admin, require_super_admin
+from auth.permissions import require_admin, require_super_admin, require_crm_access
 from auth.dependencies import get_current_user
+from routers.hrms import router as hrms_router
 from fastapi import FastAPI, Header, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -115,7 +116,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     traceback.print_exc()
     return JSONResponse(status_code=500, content={'detail': str(exc)}, headers={'Access-Control-Allow-Origin': '*'})
 
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://crm.workfloww.ai,https://crm-git-main-workfloww.vercel.app")
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173,https://crm.workfloww.ai,https://crm-git-main-workfloww.vercel.app,https://flowwies.workfloww.ai")
 allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 
 app.add_middleware(
@@ -126,6 +127,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(hrms_router)
+
 def sanitize_filename(filename: str) -> str:
     filename = filename.replace("/", "").replace("\\", "")
     filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
@@ -133,7 +136,7 @@ def sanitize_filename(filename: str) -> str:
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Leads CRM backend is running"}
+    return {"status": "ok", "message": "Leads CRM & Flowwies HRMS backend is running"}
 
 @app.get("/leads")
 @limiter.limit("60/minute")
@@ -151,7 +154,7 @@ def get_leads(
     sort_by: Optional[str] = None,
     sort_dir: Optional[str] = None,
     assigned_to_me: Optional[bool] = False,
-    user=Depends(get_current_user)
+    user=Depends(require_crm_access)
 ):
     sort_desc = sort_dir == "desc" if sort_dir else False
     

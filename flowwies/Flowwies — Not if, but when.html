@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Flowwies — Not if, but when</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FCFBFF; --surface:#FFFFFF; --ink:#0E0E1A; --muted:#5B5878;
+  --v:#5B3DF5; --vt:#EEEAFF; --vs:#F7F5FF; --vt2:#DCD3FF; --bt:#DDEAFF;
+  --line:#E4DEFA; --line2:#B8AAFB;
+  --shadow:rgba(91,61,245,.12); --hard:#CFC6FF;
+  --display:"DM Sans","Trebuchet MS",system-ui,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 80px);scroll-behavior:smooth}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55}
+h1,h2,h3{font-family:var(--display);line-height:1;margin:0;letter-spacing:-0.03em}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--v);outline-offset:3px}
+.wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+[hidden]{display:none!important}
+
+/* login */
+.login{display:grid;grid-template-columns:1.1fr .9fr;gap:44px;align-items:center;max-width:1100px;margin:0 auto;padding:40px 20px;min-height:88vh}
+.login .logo{font-size:34px;margin-bottom:28px}
+.login h1{font-weight:800;font-size:clamp(3.4rem,9vw,7rem);line-height:.88;letter-spacing:-0.05em}
+.login h1 .b{display:inline-block;background:var(--vt2);padding:0 .12em .04em;border-radius:18px;transform:rotate(-2deg);margin-top:.08em;box-shadow:6px 6px 0 var(--hard)}
+.login .lead{margin-top:24px;color:var(--muted);max-width:40ch;font-size:1.1rem}
+.login form,.login .lcard{background:var(--surface);border:2px solid var(--line);border-radius:26px;box-shadow:0 10px 30px var(--shadow);padding:26px}
+.login h2{font-size:1.8rem;margin-bottom:18px}
+.login label{display:block;font-weight:700;font-size:14px;margin:14px 0 4px}
+.login input{width:100%}
+.lerr{color:#B3261E;font-weight:700;font-size:15px;margin-top:12px;min-height:1.4em}
+.login .btn.full{width:100%;margin-top:14px;text-align:center}
+.demo{margin-top:22px;padding-top:18px;border-top:2px dashed var(--line)}
+.demo p{font-size:14px;color:var(--muted);margin-bottom:10px}
+.demo .row{display:flex;gap:8px;flex-wrap:wrap}
+.demo button{border:2px solid var(--line2);background:var(--vs);border-radius:999px;padding:5px 12px;font-size:14px;font-weight:700}
+.demo button:hover{background:var(--vt2)}
+
+/* nav */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:rgba(252,251,255,.96);border-bottom:2px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:14px;height:66px}
+.logo{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:-0.04em;text-decoration:none;color:var(--ink);display:flex;align-items:center}
+.logo span{background:var(--vt2);color:var(--ink);padding:0 8px;border-radius:9px;transform:rotate(-4deg);display:inline-block;margin-left:2px}
+.nav ul{display:flex;gap:2px;list-style:none;margin:0 0 0 auto;padding:0;overflow-x:auto}
+.nav a.l{display:block;padding:8px 11px;border-radius:999px;text-decoration:none;color:var(--ink);font-weight:700;font-size:15px;white-space:nowrap}
+.nav a.l:hover{background:var(--vt)}
+.crm{white-space:nowrap;flex:none}
+
+.vbar{background:var(--vs);border-bottom:2px solid var(--line)}
+.vbar .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding-top:12px;padding-bottom:12px}
+.vbar .who{font-weight:700}
+.vbar p{color:var(--muted);font-size:15px;flex:1 1 280px}
+.role{font-weight:700;font-size:14px;border-radius:999px;padding:3px 12px;border:2px solid var(--ink)}
+.role.admin{background:var(--vt2)}
+.role.manager{background:var(--bt)}
+.role.employee{background:var(--surface)}
+
+.field,select,input[type=text],input[type=date],input[type=number],input[type=password]{border:2px solid var(--line2);border-radius:12px;padding:9px 12px;background:var(--surface);min-width:0}
+.btn{border:2px solid var(--ink);background:var(--surface);color:var(--ink);padding:10px 18px;border-radius:12px;font-weight:700;box-shadow:3px 3px 0 var(--hard);transition:transform .12s,box-shadow .12s;text-decoration:none;display:inline-block}
+.btn:hover{transform:translate(1px,1px);box-shadow:2px 2px 0 var(--hard)}
+.btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--hard)}
+.btn.pri{background:var(--vt2)}
+.btn.ok{background:var(--bt)}
+.btn.sm{padding:6px 13px;font-size:15px;border-radius:10px}
+
+/* hero */
+.hero{padding:52px 0 36px}
+.hero .grid{display:grid;grid-template-columns:1.25fr .75fr;gap:36px;align-items:center}
+.hero h1{font-weight:800;font-size:clamp(4rem,13vw,10rem);line-height:.86;letter-spacing:-0.05em}
+.hero h1 .b{display:inline-block;background:var(--vt2);color:var(--ink);padding:0 .12em .04em;border-radius:20px;transform:rotate(-2deg);margin-top:.08em;box-shadow:6px 6px 0 var(--hard)}
+.say{margin-top:30px;font-family:var(--display);font-weight:600;font-size:clamp(1.3rem,3vw,1.9rem);min-height:2.4em;max-width:22ch}
+.sub{margin-top:14px;color:var(--muted);max-width:48ch}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
+.stack{display:grid;gap:18px}
+.card{background:var(--surface);border:2px solid var(--line);border-radius:26px;box-shadow:0 10px 30px var(--shadow);padding:22px}
+.stack .card:nth-child(1){transform:rotate(1.5deg);background:var(--vt2);border-color:var(--line2)}
+.stack .card:nth-child(2){transform:rotate(-1.2deg);background:var(--bt);border-color:var(--line2)}
+.big{font-family:var(--display);font-weight:800;font-size:4.2rem;line-height:.9}
+.card small{display:block;font-weight:700;margin-top:6px}
+
+section.s{padding:60px 0 22px}
+.shead{display:flex;flex-wrap:wrap;align-items:end;gap:14px 28px;margin-bottom:26px}
+.shead h2{font-weight:800;font-size:clamp(2.2rem,5.5vw,3.8rem)}
+.shead p{color:var(--muted);max-width:46ch}
+.sticker{display:inline-block;background:var(--vt);border:2px solid var(--ink);border-radius:999px;padding:3px 14px;font-weight:700;font-size:14px;transform:rotate(-3deg)}
+h3.sm{font-size:1.45rem;margin:22px 0 14px}
+.note{color:var(--muted);font-size:14px;margin-top:12px}
+
+/* leave + claims */
+.leave{display:grid;grid-template-columns:.95fr 1.05fr;gap:26px;align-items:start}
+.bal{display:flex;gap:10px;flex-wrap:wrap}
+.chip{border:2px solid var(--line);border-radius:14px;padding:8px 14px;background:var(--surface);font-weight:700}
+.chip b{font-family:var(--display);font-size:1.5rem;margin-right:6px;color:var(--v)}
+.apply{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.apply .full{grid-column:1/-1}
+.apply label{display:block;font-size:14px;font-weight:700;margin-bottom:4px}
+.apply select,.apply input{width:100%}
+.req{border:2px solid var(--line);border-radius:18px;padding:16px;background:var(--surface);margin-bottom:12px}
+.req .top{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.req h3{font-size:1.2rem}
+.req .meta{color:var(--muted);font-size:15px;margin-top:4px}
+.req .why{margin:10px 0 12px;font-style:italic}
+.req .acts{display:flex;gap:10px;flex-wrap:wrap}
+.tag{font-weight:700;font-size:13px;border-radius:999px;padding:2px 11px;white-space:nowrap;border:1.5px solid var(--line2)}
+.st-pending{background:var(--vt)}
+.st-approved{background:var(--bt)}
+.st-paid{background:var(--vt2)}
+.st-declined{background:var(--surface);color:var(--muted);text-decoration:line-through}
+.empty{border:2px dashed var(--line2);border-radius:18px;padding:20px;text-align:center;font-family:var(--display);font-weight:600;font-size:1.15rem}
+.calh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.calh h3{font-size:1.7rem}
+.calh .nv{display:flex;gap:8px}
+.calh button{width:40px;height:40px;border:2px solid var(--line2);background:var(--surface);border-radius:10px;font-weight:800}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);border:2px solid var(--line);border-radius:18px;overflow:hidden;background:var(--surface);box-shadow:0 10px 30px var(--shadow)}
+.cal .dow{padding:6px 4px;text-align:center;font-weight:700;font-size:13px;border-bottom:2px solid var(--line);background:var(--vt)}
+.cal .d{min-height:78px;padding:4px;border-right:1.5px solid var(--line);border-bottom:1.5px solid var(--line);font-size:13px;font-weight:700;overflow:hidden}
+.cal .d:nth-child(7n){border-right:0}
+.cal .d.we{background:var(--vs)}
+.cal .d.out{opacity:.35}
+.cal .d.today .n{background:var(--vt2);color:var(--ink);border-radius:999px;padding:0 6px}
+.cal .hol{display:block;font-size:11px;line-height:1.15;color:var(--v);margin-top:2px}
+.cal .lv{display:block;margin-top:3px;font-size:11px;border-radius:6px;padding:0 5px;border:1.5px solid var(--line2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal .lv.pend{border-style:dashed;opacity:.8}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:14px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;border:1.5px solid var(--line2);margin-right:5px;vertical-align:-1px}
+
+/* reimbursements */
+.rform label{display:block;font-size:14px;font-weight:700;margin:14px 0 4px}
+.rform label:first-of-type{margin-top:0}
+.rform input[type=text],.rform input[type=number]{width:100%}
+.rform input[type=file]{width:100%;border:2px dashed var(--line2);border-radius:12px;padding:14px;background:var(--vs)}
+.rprev{display:flex;align-items:center;gap:12px;margin-top:10px}
+.rprev img{width:96px;height:96px;object-fit:cover;border-radius:12px;border:2px solid var(--line2)}
+.rprev span{font-size:14px;color:var(--muted);word-break:break-all}
+.claim{display:flex;gap:14px;border:2px solid var(--line);border-radius:18px;padding:14px;background:var(--surface);margin-bottom:12px}
+.thumb{width:68px;height:68px;flex:none;border-radius:12px;border:2px solid var(--line2);background:var(--vs);padding:0;overflow:hidden;font-size:12px;font-weight:700;color:var(--muted);display:grid;place-items:center}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb:disabled{cursor:default}
+.claim .cb{flex:1;min-width:0}
+.claim .top{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.claim h3{font-size:1.15rem}
+.claim .amt{font-family:var(--display);font-weight:800;font-size:1.5rem;color:var(--v);margin-top:4px}
+.claim .meta{color:var(--muted);font-size:14px;margin-top:2px}
+.claim .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+dialog{border:2px solid var(--ink);border-radius:20px;padding:16px;background:var(--surface);max-width:92vw}
+dialog::backdrop{background:rgba(14,14,26,.45)}
+dialog img{display:block;max-width:80vw;max-height:70vh;border-radius:12px;margin-bottom:12px}
+
+/* people */
+.tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+.tab{border:2px solid var(--line2);border-radius:999px;padding:8px 16px;background:var(--surface);font-weight:700}
+.tab[aria-selected="true"]{background:var(--vt2);color:var(--ink);border-color:var(--ink);box-shadow:3px 3px 0 var(--hard)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.slip{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:2px dashed var(--line)}
+.slip:last-of-type{border-bottom:0}
+.slip b{font-family:var(--display);font-size:1.2rem}
+.slip span{color:var(--muted);font-size:15px;display:block}
+.ins{background:var(--vt)}
+.ins h3{font-size:1.7rem;margin-bottom:14px}
+.ins dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 18px}
+.ins dt{font-weight:700}
+.ins dd{margin:0}
+
+details{border:2px solid var(--line);border-radius:16px;background:var(--surface);margin-bottom:12px;padding:0 18px}
+summary{cursor:pointer;padding:16px 0;font-family:var(--display);font-weight:700;font-size:1.3rem;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-weight:800;color:var(--v)}
+details[open] summary::after{content:"–"}
+details .body{padding:0 0 16px;max-width:66ch}
+details .sass{display:block;font-weight:700;color:var(--v);margin-bottom:4px}
+details textarea{width:100%;min-height:100px;border:2px solid var(--line2);border-radius:12px;padding:10px;background:var(--surface);margin-bottom:10px}
+.bar{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+
+.talent{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.tom{background:var(--vt);border-color:var(--line2)}
+.tom .avatar{width:96px;height:96px;border-radius:50%;background:#fff;color:var(--v);display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:2.4rem;margin-bottom:16px}
+.tom h3{font-size:2.4rem;margin-bottom:8px}
+.tom .why{margin:14px 0 20px;font-size:1.1rem}
+.nom{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px}
+.nlist{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.nlist li{border:2px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--surface);display:flex;justify-content:space-between;gap:12px;align-items:center}
+.nlist li b{font-family:var(--display)}
+
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:26px 22px;padding:6px 6px 18px}
+.pin{border-radius:6px 22px 6px 22px;padding:18px;box-shadow:5px 5px 0 var(--hard);border:2px solid var(--line2)}
+.pin:nth-child(4n+1){background:var(--vt2);transform:rotate(-2deg)}
+.pin:nth-child(4n+2){background:var(--bt);transform:rotate(1.5deg)}
+.pin:nth-child(4n+3){background:var(--vt);transform:rotate(-1deg)}
+.pin:nth-child(4n+4){background:var(--vs);transform:rotate(2deg)}
+.pin .mo{font-weight:700;font-size:14px}
+.pin h3{font-size:1.7rem;margin:6px 0 8px}
+.pin p{font-size:15px}
+.alts{margin-top:22px;color:var(--muted);max-width:70ch}
+
+.arow{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;gap:10px;align-items:center;padding:14px 0;border-bottom:2px dashed var(--line)}
+.arow:last-child{border-bottom:0}
+.arow b{font-family:var(--display);font-size:1.15rem}
+.arow span.d{display:block;color:var(--muted);font-size:14px;word-break:break-all}
+.arow select{width:100%}
+.addp{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:10px;margin-top:6px}
+.mwrap{overflow-x:auto}
+table.m{border-collapse:collapse;width:100%;min-width:480px}
+table.m th,table.m td{padding:10px 12px;text-align:left;border-bottom:2px solid var(--line)}
+table.m th{font-family:var(--display);font-size:1.1rem}
+table.m td:first-child{font-weight:700}
+
+/* profile */
+.profbtn{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--ink);font-weight:700;font-size:15px;border:2px solid var(--ink);border-radius:999px;padding:3px 14px 3px 3px;background:var(--surface);box-shadow:3px 3px 0 var(--hard);flex:none}
+.profbtn:hover{background:var(--vt)}
+.profbtn .av{width:34px;height:34px;border-radius:50%;background:var(--vt2);display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:14px}
+.pid{display:flex;align-items:center;gap:18px;margin-bottom:24px;flex-wrap:wrap}
+.pid .big-av{width:84px;height:84px;border-radius:50%;background:var(--vt2);border:2px solid var(--ink);display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:2rem}
+.pform h3{font-size:1.5rem;margin:26px 0 4px}
+.pform h3:first-child{margin-top:0}
+.pform .f{margin-top:14px}
+.pform label{display:block;font-size:14px;font-weight:700;margin-bottom:4px}
+.pform input,.pform textarea{width:100%}
+.pform textarea{border:2px solid var(--line2);border-radius:12px;padding:9px 12px;background:var(--surface);min-height:84px;resize:vertical}
+.pform input[readonly]{background:var(--vs);color:var(--muted)}
+.pform .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pform .arow2{display:flex;gap:10px;align-items:center}
+
+footer{padding:56px 0 70px;text-align:center}
+footer .t{font-family:var(--display);font-weight:800;font-size:clamp(1.8rem,5vw,3rem)}
+footer p{color:var(--muted);margin-top:10px}
+
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);transform:translate(-50%,30px);opacity:0;pointer-events:none;background:var(--vt2);color:var(--ink);border:2px solid var(--ink);padding:12px 20px;border-radius:14px;font-weight:700;z-index:50;transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:900px){
+  .login,.hero .grid,.leave,.two,.talent{grid-template-columns:1fr}
+  .login{min-height:0;gap:28px}
+  .cal .d{min-height:62px}
+  .cal .lv{font-size:10px}
+  .arow,.addp{grid-template-columns:1fr 1fr}
+  .arow > :first-child,.addp > :first-child{grid-column:1/-1}
+}
+@media (max-width:620px){
+  .profbtn .t{display:none}
+  .profbtn{padding:3px}
+  .pform .r2{grid-template-columns:1fr}
+  .nav ul{display:none}
+  .crm{margin-left:auto}
+  .apply{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *{transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <div class="login">
+    <div>
+      <div class="logo">Flow<span>wies</span></div>
+      <h1>Not if.<br><span class="b">But when.</span></h1>
+      <p class="lead">Sign in to see your leave, payslips, insurance and claims. Everything HR, minus the "per my last email."</p>
+    </div>
+    <div class="lcard">
+      <h2>Sign in</h2>
+      <label for="loginEmail">Work email</label>
+      <input type="text" id="loginEmail" inputmode="email" autocomplete="username" placeholder="name@workfloww.ai">
+      <label for="loginPass">Password</label>
+      <input type="password" id="loginPass" autocomplete="current-password" placeholder="Your password">
+      <div class="lerr" id="loginErr" role="alert"></div>
+      <button class="btn pri full" id="loginBtn">Sign in</button>
+      <button class="btn full" id="googleBtn">Sign in with Google</button>
+      <div class="demo">
+        <p>Prototype only. Pick a demo person to fill the form. The demo password is <b>flowwies</b>.</p>
+        <div class="row" id="demoRow"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="app" hidden>
+<header class="nav">
+  <div class="wrap">
+    <a class="profbtn" id="profBtn" href="#profile" aria-label="My profile"><span class="av" id="profAv"></span><span class="t">Profile</span></a>
+    <a class="logo" href="#top" aria-label="Flowwies home">Flow<span>wies</span></a>
+    <ul>
+      <li><a class="l" href="#leave">Leave</a></li>
+      <li><a class="l" href="#people">Pay &amp; cover</a></li>
+      <li><a class="l" href="#reimbursements">Reimbursements</a></li>
+      <li><a class="l" href="#policies">Rules</a></li>
+      <li><a class="l" href="#talent">Talent</a></li>
+      <li><a class="l" href="#flex">Hall of Flex</a></li>
+      <li id="navAccess" hidden><a class="l" href="#access">People &amp; access</a></li>
+    </ul>
+    <a class="btn pri sm crm" id="crmBtn" href="https://crm.workfloww.ai" target="_blank" rel="noopener noreferrer" hidden>CRM ↗</a>
+  </div>
+</header>
+
+<div class="vbar">
+  <div class="wrap">
+    <span class="who" id="whoName"></span>
+    <span class="role" id="roleBadge"></span>
+    <p id="blurb"></p>
+    <button class="btn sm" id="signOut">Sign out</button>
+  </div>
+</div>
+
+<main id="top">
+<div id="pageHome">
+<section class="hero">
+  <div class="wrap grid">
+    <div>
+      <h1>Not if.<br><span class="b">But when.</span></h1>
+      <p class="say" id="say" aria-live="off">Your leave isn't an if. It's a when.</p>
+      <p class="sub" id="hello"></p>
+      <div class="cta">
+        <a class="btn pri" href="#leave">Apply for leave</a>
+        <a class="btn" href="#reimbursements">Claim an expense</a>
+        <a class="btn" href="#flex">See who's flexing</a>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card"><div class="big" id="pendCount">0</div><small id="pendLabel"></small></div>
+      <div class="card"><div class="big" id="holDays">0</div><small id="holName"></small></div>
+    </div>
+  </div>
+</section>
+
+<section class="s" id="leave">
+  <div class="wrap">
+    <div class="shead">
+      <h2>Leave, decided.</h2>
+      <p>Request it, approve it, see it on the calendar. Approved leave lands there the second it's approved.</p>
+    </div>
+    <div class="leave">
+      <div>
+        <div class="bal" id="bal"></div>
+        <h3 class="sm">Ask for time off</h3>
+        <div class="card">
+          <div class="apply">
+            <div><label for="lType">Type</label><select id="lType"><option>Casual</option><option>Sick</option><option>Earned</option></select></div>
+            <div><label for="lFrom">From</label><input type="date" id="lFrom"></div>
+            <div><label for="lTo">To</label><input type="date" id="lTo"></div>
+            <div><label for="lWhy">Reason</label><input type="text" id="lWhy" placeholder="Short and honest"></div>
+            <div class="full"><button class="btn pri" id="lSend">Send request</button></div>
+          </div>
+          <p class="note" id="lRoute"></p>
+        </div>
+        <div id="approveBox">
+          <h3 class="sm">Waiting on you</h3>
+          <div id="approvals"></div>
+        </div>
+        <h3 class="sm">Your requests</h3>
+        <div id="mine"></div>
+      </div>
+      <div>
+        <div class="calh">
+          <h3 id="monthName"></h3>
+          <div class="nv">
+            <button id="prev" aria-label="Previous month">‹</button>
+            <button id="next" aria-label="Next month">›</button>
+          </div>
+        </div>
+        <div class="cal" id="cal" role="grid" aria-label="Team calendar"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="s" id="people">
+  <div class="wrap">
+    <div class="shead">
+      <h2 id="payTitle">Your money. Your cover.</h2>
+      <p id="payNote"></p>
+    </div>
+    <div class="tabs" role="tablist" id="tabs" aria-label="Choose an employee" hidden></div>
+    <div class="two">
+      <div class="card" id="slips"></div>
+      <div class="card ins" id="insure"></div>
+    </div>
+  </div>
+</section>
+
+<section class="s" id="policies">
+  <div class="wrap">
+    <div class="shead">
+      <h2>The rules, in English.</h2>
+      <p>Short enough to read. Open one.</p>
+    </div>
+    <div id="pols"></div>
+  </div>
+</section>
+
+<section class="s" id="talent">
+  <div class="wrap">
+    <div class="shead">
+      <h2>Talent of the Month</h2>
+      <p>One person, one month, zero ambiguity.</p>
+    </div>
+    <div class="talent">
+      <div class="card tom" id="tom"></div>
+      <div>
+        <h3 class="sm" style="margin-top:0">Think someone deserves next month?</h3>
+        <div class="nom">
+          <select id="nomWho" aria-label="Who are you nominating"></select>
+          <input id="nomWhy" type="text" placeholder="Why they earned it" aria-label="Reason for nomination">
+          <div><button class="btn pri sm" id="nomBtn">Nominate</button></div>
+        </div>
+        <ul class="nlist" id="nlist"></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="s" id="flex">
+  <div class="wrap">
+    <div class="shead">
+      <h2>Hall of Flex</h2>
+      <span class="sticker">formerly "Hall of Fame"</span>
+      <p>Everyone who made the month look easy. Receipts included.</p>
+    </div>
+    <div class="wall" id="wall"></div>
+    <p class="alts">Other names we weighed: The Receipts Wall, Main Character Wall, Legends Lounge. Hall of Flex won because Flowwies flex.</p>
+  </div>
+</section>
+
+<section class="s" id="access" hidden>
+  <div class="wrap">
+    <div class="shead">
+      <h2>People &amp; access</h2>
+      <p>Decide who is who. Change a role or a team and that person's view changes with it. Sign in as them to check.</p>
+    </div>
+    <div class="two">
+      <div class="card">
+        <div id="arows"></div>
+        <h3 class="sm">Add a person</h3>
+        <div class="addp">
+          <input type="text" id="aName" placeholder="Full name" aria-label="Full name">
+          <select id="aDept" aria-label="Team"></select>
+          <select id="aRole" aria-label="Role"><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">HR Admin</option></select>
+          <button class="btn pri sm" id="aBtn">Add person</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:1.5rem;margin-bottom:12px">Who sees what</h3>
+        <div class="mwrap">
+        <table class="m">
+          <thead><tr><th></th><th>Employee</th><th>Manager</th><th>HR Admin</th></tr></thead>
+          <tbody>
+            <tr><td>Apply for leave</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Approve leave</td><td>No</td><td>Their team</td><td>Everyone</td></tr>
+            <tr><td>Submit reimbursements</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Approve reimbursements</td><td>No</td><td>Their team</td><td>Everyone</td></tr>
+            <tr><td>Mark claims as paid</td><td>No</td><td>No</td><td>Yes</td></tr>
+            <tr><td>Payslips and insurance</td><td>Own</td><td>Own</td><td>Everyone</td></tr>
+            <tr><td>Profile and bank details</td><td>Own</td><td>Own</td><td>Everyone</td></tr>
+            <tr><td>Edit policies</td><td>No</td><td>No</td><td>Yes</td></tr>
+            <tr><td>Nominate talent</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Crown talent</td><td>No</td><td>No</td><td>Yes</td></tr>
+            <tr><td>People and access</td><td>No</td><td>No</td><td>Yes</td></tr>
+            <tr><td>CRM button</td><td colspan="3">Growth team only, whatever the role</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<div id="pageReimb" hidden>
+<section class="s" style="padding-top:44px">
+  <div class="wrap">
+    <div class="shead">
+      <h2>Spent it? Show the receipt.</h2>
+      <p>Not if you get paid back. When the bill is uploaded.</p>
+    </div>
+    <div class="leave">
+      <div>
+        <div class="card rform">
+          <label for="rTitle">Title</label>
+          <input type="text" id="rTitle" placeholder="e.g. Cab to client site">
+          <label for="rAmt">Amount (₹)</label>
+          <input type="number" id="rAmt" min="1" step="any" inputmode="decimal" placeholder="0">
+          <label for="rFile">Bill photo or payment screenshot</label>
+          <input type="file" id="rFile" accept="image/*,application/pdf">
+          <div class="rprev" id="rPrev"></div>
+          <p class="note">Photos or PDFs up to 5 MB. The bill is required, no bill, no refund.</p>
+          <div style="margin-top:16px"><button class="btn pri" id="rSend">Submit claim</button></div>
+          <p class="note" id="rRoute"></p>
+        </div>
+      </div>
+      <div>
+        <div id="claimApprove">
+          <h3 class="sm" style="margin-top:0">Waiting on you</h3>
+          <div id="claimQueue"></div>
+        </div>
+        <h3 class="sm" id="mineHead">Your claims</h3>
+        <div id="claimMine"></div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<div id="pageProfile" hidden>
+<section class="s" style="padding-top:44px">
+  <div class="wrap">
+    <div class="shead">
+      <h2>Your profile.</h2>
+      <p id="profNote"></p>
+    </div>
+    <div id="profPick" hidden style="margin-bottom:20px">
+      <label for="profWho" style="font-weight:700;margin-right:10px">Showing</label>
+      <select id="profWho"></select>
+    </div>
+    <div class="pid">
+      <div class="big-av" id="profBig"></div>
+      <div><h3 id="profName" style="font-size:2rem"></h3><p class="note" id="profSub" style="margin-top:6px"></p></div>
+    </div>
+    <div class="two pform">
+      <div class="card" id="pLeft"></div>
+      <div class="card" id="pRight"></div>
+    </div>
+    <div class="bar" style="margin-top:22px">
+      <button class="btn pri" id="profSave">Save changes</button>
+      <button class="btn" id="profReset">Undo changes</button>
+    </div>
+    <p class="note">Only you and HR can see these details. Everything here is sample data.</p>
+  </div>
+</section>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="t">Your leave? Not if. But when.</div>
+    <p>Flowwies is a prototype. Names, dates and numbers are sample data.</p>
+  </div>
+</footer>
+</div>
+
+<dialog id="lb"><img id="lbImg" alt="Bill"><button class="btn sm" id="lbClose">Close</button></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var TODAY='2026-10-14';
+  var DEMO_PW='flowwies';
+  var CRM_URL='https://crm.workfloww.ai';
+  var COLORS=['#E6E0FF','#D6E6FF','#D0C6FF','#C2DAFF','#EDE8FF'];
+  var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var ROLE={admin:'HR Admin',manager:'Manager',employee:'Employee'};
+  var TEAMS=['Growth','Engineering','Design','Sales','Operations','People & HR'];
+  var BLURB={
+    admin:'Sees everything. Approves any leave or claim, opens every payslip, edits the rules, crowns winners and manages access.',
+    manager:'Approves leave and claims for their team. Sees their own pay and cover.',
+    employee:'Applies for leave, claims expenses, sees their own payslips and insurance, and nominates teammates.'
+  };
+  var HOL={'2026-10-02':'Gandhi Jayanti','2026-10-20':'Dussehra','2026-11-08':'Diwali'};
+
+  var users=[
+    {id:'meera',name:'Meera Joshi',email:'meera@workfloww.ai',role:'admin',dept:'People & HR',color:COLORS[0],mgr:'',active:true},
+    {id:'aarav',name:'Aarav Mehta',email:'aarav@workfloww.ai',role:'manager',dept:'Engineering',color:COLORS[1],mgr:'meera',active:true},
+    {id:'naina',name:'Naina Kapoor',email:'naina@workfloww.ai',role:'employee',dept:'Design',color:COLORS[2],mgr:'aarav',active:true},
+    {id:'kabir',name:'Kabir Sethi',email:'kabir@workfloww.ai',role:'employee',dept:'Growth',color:COLORS[3],mgr:'meera',active:true},
+    {id:'ishita',name:'Ishita Rao',email:'ishita@workfloww.ai',role:'employee',dept:'Operations',color:COLORS[4],mgr:'aarav',active:true}
+  ];
+  var bal={};
+  users.forEach(function(u){bal[u.id]={Casual:8,Sick:6,Earned:12}});
+  var PAY={
+    meera:['₹92,000','₹92,000','₹92,000'],
+    aarav:['₹78,400','₹78,400','₹76,900'],
+    naina:['₹71,200','₹71,200','₹71,200'],
+    kabir:['₹64,800','₹69,300','₹64,800'],
+    ishita:['₹59,500','₹59,500','₹59,500']
+  };
+  var INS={
+    meera:{pol:'GMC-2026-0411',cover:'₹5,00,000',dep:'Self, spouse'},
+    aarav:{pol:'GMC-2026-0412',cover:'₹5,00,000',dep:'Self, 2 parents'},
+    naina:{pol:'GMC-2026-0413',cover:'₹5,00,000',dep:'Self'},
+    kabir:{pol:'GMC-2026-0414',cover:'₹5,00,000',dep:'Self, spouse'},
+    ishita:{pol:'GMC-2026-0415',cover:'₹5,00,000',dep:'Self, 1 parent'}
+  };
+  var reqs=[
+    {id:1,emp:'naina',from:'2026-10-16',to:'2026-10-16',type:'Casual',why:'Long weekend.',status:'approved'},
+    {id:2,emp:'kabir',from:'2026-10-26',to:'2026-10-28',type:'Earned',why:'Family function.',status:'approved'},
+    {id:3,emp:'ishita',from:'2026-11-02',to:'2026-11-03',type:'Casual',why:'Moving house.',status:'approved'},
+    {id:4,emp:'naina',from:'2026-10-21',to:'2026-10-23',type:'Casual',why:"Cousin's wedding.",status:'pending'},
+    {id:5,emp:'ishita',from:'2026-10-30',to:'2026-10-30',type:'Sick',why:'Dentist.',status:'pending'},
+    {id:6,emp:'kabir',from:'2026-11-12',to:'2026-11-13',type:'Earned',why:'Family trip, booked already.',status:'pending'},
+    {id:7,emp:'aarav',from:'2026-11-04',to:'2026-11-05',type:'Casual',why:'Personal errands.',status:'pending'}
+  ];
+  var claims=[
+    {id:1,emp:'naina',title:'Client lunch',amount:1850,file:'',img:'',status:'pending',date:'2026-10-12'},
+    {id:2,emp:'ishita',title:'Courier charges',amount:640,file:'',img:'',status:'approved',date:'2026-10-08'},
+    {id:3,emp:'kabir',title:'Cab to client site',amount:920,file:'',img:'',status:'pending',date:'2026-10-13'},
+    {id:4,emp:'aarav',title:'Software subscription',amount:2400,file:'',img:'',status:'pending',date:'2026-10-10'}
+  ];
+  var nextReq=8,nextClaim=5,nextUser=1;
+  var prof={
+    meera:{empId:'FW-001',dob:'1989-04-12',joined:'2021-06-01',phone:'9876501234',pemail:'meera.joshi@example.com',emName:'Rohan Joshi',emPhone:'9876505678',addr:'B-204, Green Park Apartments, Sector 56',city:'Gurugram',state:'Haryana',pin:'122011',acName:'Meera Joshi',bank:'HDFC Bank',acNo:'50100234561234',ifsc:'HDFC0001234',upi:'meera.joshi@okhdfcbank'},
+    aarav:{empId:'FW-002',dob:'1992-09-03',joined:'2022-01-17',phone:'9811122334',pemail:'aarav.mehta@example.com',emName:'Sunita Mehta',emPhone:'9811198765',addr:'12, Lake View Society, Sector 29',city:'Gurugram',state:'Haryana',pin:'122001',acName:'Aarav Mehta',bank:'ICICI Bank',acNo:'123401567890',ifsc:'ICIC0000123',upi:'aarav.mehta@okicici'},
+    naina:{empId:'FW-003',dob:'1996-02-21',joined:'2023-03-06',phone:'9899001122',pemail:'naina.kapoor@example.com',emName:'Anil Kapoor',emPhone:'9899005544',addr:'H-45, Sushant Lok Phase 1',city:'Gurugram',state:'Haryana',pin:'122009',acName:'Naina Kapoor',bank:'State Bank of India',acNo:'30012345678',ifsc:'SBIN0001234',upi:'naina.k@oksbi'},
+    kabir:{empId:'FW-004',dob:'1994-11-30',joined:'2023-08-14',phone:'9990011223',pemail:'kabir.sethi@example.com',emName:'Rekha Sethi',emPhone:'9990077889',addr:'C-9, Palam Vihar',city:'Gurugram',state:'Haryana',pin:'122017',acName:'Kabir Sethi',bank:'Axis Bank',acNo:'918010012345678',ifsc:'UTIB0000123',upi:'kabir.sethi@okaxis'},
+    ishita:{empId:'FW-005',dob:'1997-07-08',joined:'2024-02-05',phone:'9718203344',pemail:'ishita.rao@example.com',emName:'Mohan Rao',emPhone:'9718209900',addr:'Flat 7B, Sector 14',city:'Gurugram',state:'Haryana',pin:'122001',acName:'Ishita Rao',bank:'Kotak Mahindra Bank',acNo:'4512345678',ifsc:'KKBK0000123',upi:'ishita.rao@okaxis'}
+  };
+  function P(id){
+    if(!prof[id]){
+      var n=Object.keys(prof).length+1;
+      prof[id]={empId:'FW-'+(n<10?'00':n<100?'0':'')+n,dob:'',joined:TODAY,phone:'',pemail:'',emName:'',emPhone:'',addr:'',city:'',state:'',pin:'',acName:'',bank:'',acNo:'',ifsc:'',upi:''};
+    }
+    return prof[id];
+  }
+  function payTo(id){var p=P(id);if(p.upi)return 'UPI '+p.upi;if(p.acNo)return (p.bank||'Bank')+' ••'+p.acNo.slice(-4);return 'no payout details yet'}
+  function fmtFull(s){if(!s)return '';var p=s.split('-');return parseInt(p[2],10)+' '+MN[parseInt(p[1],10)-1].slice(0,3)+' '+p[0]}
+  var policies=[
+    {t:'Leave policy',s:'Yes, you may rest.',b:'Casual, sick and earned leave have separate balances. Apply at least two working days ahead for planned leave. Sick leave can be applied the same day. Your approver decides within one working day.'},
+    {t:'Holidays',s:'The calendar is not a suggestion.',b:'The company holiday list is set at the start of the year and shows on everyone\'s calendar. Optional holidays are claimed from your casual balance.'},
+    {t:'Payslips',s:'Not if you get paid. When you can download it.',b:'Payslips are published on the 1st of every month and stay available for the full year. You only ever see your own.'},
+    {t:'Insurance and claims',s:'Read it before you need it.',b:'Each employee has a policy number, cover amount and dependents on file. For a claim, raise it here and attach the documents. The HR team takes it from there.'},
+    {t:'Reimbursements',s:'No bill, no refund.',b:'Add a title, the amount and a photo or screenshot of the bill. Your approver reviews it and HR marks it paid once it is approved.'},
+    {t:'Meetings and stand-ups',s:'Fifteen minutes means fifteen minutes.',b:'Stand-ups and client calls are scheduled on Google Calendar with a Meet link attached. Approved leave blocks your slot automatically.'}
+  ];
+  var polOpen=[true,false,false,false,false,false],polEdit=-1;
+  var talent={name:'Naina Kapoor',ini:'NK',dept:'Design',month:'October 2026',why:'Rebuilt the onboarding flow in six days and nobody had to ask twice.'};
+  var cheers=14;
+  var noms=[
+    {emp:'kabir',why:"Closed the quarter's biggest client and shared the notes.",by:'Aarav'},
+    {emp:'ishita',why:'Fixed the vendor payments mess before anyone noticed it.',by:'Meera'}
+  ];
+  var wall=[
+    {month:'September 2026',name:'Aarav Mehta',why:'Shipped the leads app to the whole team and answered every "where\'s the button?" with a smile.'},
+    {month:'August 2026',name:'Ishita Rao',why:'Turned a month-end scramble into a one-click report.'},
+    {month:'July 2026',name:'Kabir Sethi',why:'Three client demos, zero rescheduled.'},
+    {month:'June 2026',name:'Naina Kapoor',why:'Redrew the brand kit so everything finally matches.'}
+  ];
+  var authed=false,meId='',payId='',profId='',viewY=2026,viewM=9;
+  var rImg='',rName='',rIsImg=false;
+
+  function $(id){return document.getElementById(id)}
+  function h(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+  function add(p){for(var i=1;i<arguments.length;i++){if(arguments[i])p.appendChild(arguments[i])}return p}
+  function U(id){return users.filter(function(u){return u.id===id})[0]}
+  function me(){return U(meId)}
+  function isAdmin(){return !!me()&&me().role==='admin'}
+  function isMgr(){return !!me()&&me().role==='manager'}
+  function isGrowth(u){return !!u&&String(u.dept||'').toLowerCase()==='growth'}
+  function first(u){return u.name.split(' ')[0]}
+  function ini(n){return n.split(/\s+/).slice(0,2).map(function(w){return w.charAt(0).toUpperCase()}).join('')}
+  function active(){return users.filter(function(u){return u.active})}
+  function pad(n){return (n<10?'0':'')+n}
+  function iso(y,m,d){return y+'-'+pad(m+1)+'-'+pad(d)}
+  function fmt(s){var p=s.split('-');return parseInt(p[2],10)+' '+MN[parseInt(p[1],10)-1].slice(0,3)}
+  function range(r){return r.from===r.to?fmt(r.from):fmt(r.from)+' to '+fmt(r.to)}
+  function days(r){return Math.round((new Date(r.to+'T00:00:00')-new Date(r.from+'T00:00:00'))/86400000)+1}
+  function money(a){return '₹'+Number(a).toLocaleString('en-IN')}
+  function nextMonth(l){var p=l.split(' '),i=MN.indexOf(p[0]),y=parseInt(p[1],10);i++;if(i>11){i=0;y++}return MN[i]+' '+y}
+  function canAct(empId){var o=U(empId);return !!o&&empId!==meId&&(isAdmin()||o.mgr===meId)}
+  function canApprove(r){return r.status==='pending'&&canAct(r.emp)}
+  function opt(v,t,sel){var o=document.createElement('option');o.value=v;o.textContent=t;if(sel)o.selected=true;return o}
+  function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+  function bossName(u){return u.mgr&&U(u.mgr)?U(u.mgr).name:'leadership'}
+
+  var tt;
+  function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('on')},2800)}
+
+  /* login */
+  function renderDemo(){
+    var row=$('demoRow');row.innerHTML='';
+    active().forEach(function(u){
+      var b=h('button',null,first(u)+' · '+ROLE[u.role]+' · '+u.dept);b.type='button';
+      b.onclick=function(){$('loginEmail').value=u.email;$('loginPass').value=DEMO_PW;$('loginErr').textContent=''};
+      row.appendChild(b);
+    });
+  }
+  function doLogin(){
+    var e=$('loginEmail').value.trim().toLowerCase(),p=$('loginPass').value;
+    var u=users.filter(function(x){return x.email===e})[0];
+    var err=$('loginErr');
+    if(!e||!p){err.textContent='Enter your email and password.';return}
+    if(!u){err.textContent="That email isn't on the list. Ask HR to add you.";return}
+    if(!u.active){err.textContent='Your access is paused. Please talk to HR.';return}
+    if(p!==DEMO_PW){err.textContent='Wrong password. It happens to the best of us. (Demo password: flowwies)';return}
+    err.textContent='';meId=u.id;authed=true;payId='';profId='';
+    $('login').hidden=true;$('app').hidden=false;
+    try{history.replaceState(null,'',location.pathname)}catch(x){}
+    renderAll();route();window.scrollTo(0,0);toast('Welcome back, '+first(u)+'.');
+  }
+  function signOut(){
+    authed=false;meId='';profId='';$('app').hidden=true;$('login').hidden=false;
+    $('loginPass').value='';$('loginErr').textContent='';renderDemo();window.scrollTo(0,0);
+  }
+  $('loginBtn').onclick=doLogin;
+  $('loginPass').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+  $('loginEmail').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+  $('googleBtn').onclick=function(){toast('Google Workspace sign-in switches on in the build.')};
+  $('signOut').onclick=function(){signOut();toast('Signed out.')};
+
+  /* routing */
+  function route(){
+    if(!authed)return;
+    var hash=location.hash.replace('#','');
+    var other=hash==='reimbursements'||hash==='profile';
+    $('pageHome').hidden=other;$('pageReimb').hidden=hash!=='reimbursements';$('pageProfile').hidden=hash!=='profile';
+    if(other){window.scrollTo(0,0)}
+    else if(hash&&$(hash)&&!$(hash).hidden){$(hash).scrollIntoView()}
+    else{window.scrollTo(0,0)}
+  }
+  window.addEventListener('hashchange',route);
+  document.addEventListener('click',function(e){
+    var a=e.target.closest?e.target.closest('a[href^="#"]'):null;
+    if(a)setTimeout(route,0);
+  });
+
+  /* hero */
+  var lines=["Your leave isn't an if. It's a when.","Payslip? Not if. When the 1st arrives.","Approval? Not if. Before lunch.","Refund? Not if. When the bill is uploaded."],li=0;
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    setInterval(function(){li=(li+1)%lines.length;$('say').textContent=lines[li]},3600);
+  }
+  function renderHero(){
+    var u=me();
+    $('hello').textContent='Hi '+first(u)+'. Flowwies is where Workfloww.ai keeps leave, payslips, insurance, rules and applause. Everything HR, minus the "per my last email."';
+    var n,lab;
+    if(isAdmin()||isMgr()){
+      n=reqs.filter(canApprove).length;lab=n===1?'leave request waiting on you':'leave requests waiting on you';
+    }else{
+      n=reqs.filter(function(r){return r.emp===meId&&r.status==='pending'}).length;lab=n===1?'of your requests is waiting on a decision':'of your requests are waiting on a decision';
+    }
+    $('pendCount').textContent=n;$('pendLabel').textContent=lab;
+    var t=new Date(TODAY+'T00:00:00'),best=null,name='';
+    Object.keys(HOL).sort().forEach(function(k){var d=new Date(k+'T00:00:00');if(d>=t&&best===null){best=Math.round((d-t)/86400000);name=HOL[k]}});
+    $('holDays').textContent=best===null?'0':best;
+    $('holName').textContent='days to '+name;
+  }
+
+  /* top bar */
+  function renderBar(){
+    var u=me();
+    $('whoName').textContent='Signed in as '+u.name;
+    $('profAv').textContent=ini(u.name);
+    var b=$('roleBadge');b.textContent=ROLE[u.role];b.className='role '+u.role;
+    $('blurb').textContent=BLURB[u.role]+(isGrowth(u)?' Part of the Growth team, so the CRM button is on for you.':'');
+    $('navAccess').hidden=!isAdmin();
+    $('access').hidden=!isAdmin();
+    var crm=$('crmBtn');crm.hidden=!isGrowth(u);crm.href=CRM_URL;
+  }
+
+  /* leave */
+  function renderLeave(){
+    var u=me(),b=$('bal');b.innerHTML='';
+    ['Casual','Sick','Earned'].forEach(function(k){
+      var c=h('div','chip');add(c,h('b',null,bal[u.id]?bal[u.id][k]:0),document.createTextNode(k));b.appendChild(c);
+    });
+    $('lRoute').textContent=u.mgr&&U(u.mgr)?'This goes to '+U(u.mgr).name+'.':'This goes to leadership for approval.';
+    var ab=$('approveBox'),ap=$('approvals');ap.innerHTML='';
+    ab.hidden=!(isAdmin()||isMgr());
+    var list=reqs.filter(canApprove);
+    if(!list.length)ap.appendChild(h('div','empty','Inbox zero. Go get a chai.'));
+    list.forEach(function(r){
+      var p=U(r.emp),el=h('div','req'),top=h('div','top');
+      var tg=h('span','tag',r.type);tg.style.background=p.color;
+      add(top,h('h3',null,p.name),tg);
+      var acts=h('div','acts');
+      var ok=h('button','btn ok sm','Approve');
+      ok.onclick=function(){
+        r.status='approved';
+        if(bal[r.emp])bal[r.emp][r.type]=Math.max(0,bal[r.emp][r.type]-days(r));
+        var d=r.from.split('-');viewY=parseInt(d[0],10);viewM=parseInt(d[1],10)-1;
+        renderAll();toast('Approved. '+first(p)+' is on the calendar.');
+      };
+      var no=h('button','btn sm','Not this time');
+      no.onclick=function(){r.status='declined';renderAll();toast('Declined. '+first(p)+' has been notified.')};
+      add(acts,ok,no);
+      add(el,top,h('div','meta',range(r)+' · '+days(r)+(days(r)>1?' days':' day')),h('div','why','"'+r.why+'"'),acts);
+      ap.appendChild(el);
+    });
+    var m=$('mine');m.innerHTML='';
+    var mine=reqs.filter(function(r){return r.emp===meId}).slice().reverse();
+    if(!mine.length)m.appendChild(h('div','empty','Nothing requested yet. Rest is allowed.'));
+    mine.forEach(function(r){
+      var el=h('div','req'),top=h('div','top');
+      add(top,h('h3',null,r.type+' leave'),h('span','tag st-'+r.status,cap(r.status)));
+      add(el,top,h('div','meta',range(r)+' · '+days(r)+(days(r)>1?' days':' day')),h('div','why','"'+r.why+'"'));
+      if(r.status==='pending'){
+        var w=h('button','btn sm','Withdraw');
+        w.onclick=function(){reqs=reqs.filter(function(x){return x.id!==r.id});renderAll();toast('Request withdrawn.')};
+        add(el,add(h('div','acts'),w));
+      }
+      m.appendChild(el);
+    });
+  }
+  $('lFrom').min=TODAY;$('lTo').min=TODAY;
+  $('lSend').onclick=function(){
+    var type=$('lType').value,f=$('lFrom').value,t=$('lTo').value||f,why=$('lWhy').value.trim();
+    if(!f){toast('Pick a start date first.');return}
+    if(t<f){toast('The end date comes before the start date.');return}
+    var r={id:nextReq++,emp:meId,from:f,to:t,type:type,why:why||'No reason given.',status:'pending'};
+    var left=bal[meId]?bal[meId][type]:0;
+    if(days(r)>left){toast('Only '+left+' '+type.toLowerCase()+' day'+(left===1?'':'s')+' left. Pick another type or fewer days.');return}
+    reqs.push(r);
+    $('lFrom').value='';$('lTo').value='';$('lWhy').value='';
+    renderAll();toast('Sent to '+bossName(me())+'.');
+  };
+
+  /* calendar */
+  function renderCal(){
+    $('monthName').textContent=MN[viewM]+' '+viewY;
+    var cal=$('cal');cal.innerHTML='';
+    DOW.forEach(function(d){cal.appendChild(h('div','dow',d))});
+    var f=new Date(viewY,viewM,1).getDay(),dim=new Date(viewY,viewM+1,0).getDate(),pd=new Date(viewY,viewM,0).getDate();
+    var total=Math.ceil((f+dim)/7)*7;
+    for(var i=0;i<total;i++){
+      var c=h('div','d'),num,y=viewY,m=viewM,out=false;
+      if(i<f){num=pd-f+i+1;out=true;m--;if(m<0){m=11;y--}}
+      else if(i>=f+dim){num=i-f-dim+1;out=true;m++;if(m>11){m=0;y++}}
+      else num=i-f+1;
+      var s=iso(y,m,num),dw=i%7;
+      if(out)c.classList.add('out');
+      if(dw===0||dw===6)c.classList.add('we');
+      if(s===TODAY)c.classList.add('today');
+      c.appendChild(h('span','n',num));
+      if(HOL[s])c.appendChild(h('span','hol',HOL[s]));
+      reqs.forEach(function(r){
+        if(s<r.from||s>r.to)return;
+        var p=U(r.emp);if(!p)return;
+        var show=r.status==='approved'||(r.status==='pending'&&(r.emp===meId||canApprove(r)));
+        if(!show)return;
+        var v=h('span','lv'+(r.status==='pending'?' pend':''),ini(p.name)+' '+r.type+(r.status==='pending'?' (pending)':''));
+        v.style.background=p.color;v.title=p.name+', '+r.type+' leave, '+r.status;c.appendChild(v);
+      });
+      cal.appendChild(c);
+    }
+    var lg=$('legend');lg.innerHTML='';
+    active().forEach(function(p){var s=h('span');var i=h('i');i.style.background=p.color;add(s,i,document.createTextNode(first(p)));lg.appendChild(s)});
+    var hs=h('span'),hi=h('i');hi.style.background='#5B3DF5';add(hs,hi,document.createTextNode('Holiday names in violet'));lg.appendChild(hs);
+    var ps=h('span'),pi=h('i');pi.style.borderStyle='dashed';add(ps,pi,document.createTextNode('Dashed means pending'));lg.appendChild(ps);
+  }
+  $('prev').onclick=function(){viewM--;if(viewM<0){viewM=11;viewY--}renderCal()};
+  $('next').onclick=function(){viewM++;if(viewM>11){viewM=0;viewY++}renderCal()};
+
+  /* reimbursements */
+  var lb=$('lb');
+  function openLb(src,title){
+    $('lbImg').src=src;$('lbImg').alt='Bill for '+title;
+    if(lb.showModal){lb.showModal()}else{lb.setAttribute('open','')}
+  }
+  $('lbClose').onclick=function(){if(lb.close){lb.close()}else{lb.removeAttribute('open')}};
+  function thumb(c){
+    var b=h('button','thumb');b.type='button';
+    if(c.img){
+      var im=document.createElement('img');im.src=c.img;im.alt='';b.appendChild(im);
+      b.setAttribute('aria-label','View bill for '+c.title);b.onclick=function(){openLb(c.img,c.title)};
+    }else{b.textContent=c.file?'PDF':'Sample';b.disabled=true}
+    return b;
+  }
+  function claimCard(c,mode){
+    var p=U(c.emp),el=h('div','claim'),body=h('div','cb'),top=h('div','top');
+    add(top,h('h3',null,c.title),h('span','tag st-'+c.status,cap(c.status)));
+    add(body,top,h('div','amt',money(c.amount)),h('div','meta',(mode==='queue'&&p?p.name+' · ':'')+fmt(c.date)+(c.file?' · '+c.file:'')+(mode==='queue'&&c.status==='approved'&&isAdmin()?' · Pay to '+payTo(c.emp):'')));
+    var acts=h('div','acts');
+    if(mode==='mine'&&c.status==='pending'){
+      var w=h('button','btn sm','Withdraw');
+      w.onclick=function(){claims=claims.filter(function(x){return x.id!==c.id});renderAll();toast('Claim withdrawn.')};
+      acts.appendChild(w);
+    }
+    if(mode==='queue'&&c.status==='pending'){
+      var ok=h('button','btn ok sm','Approve');
+      ok.onclick=function(){c.status='approved';renderAll();toast('Approved. '+(p?first(p):'They')+' will be paid back.')};
+      var no=h('button','btn sm','Decline');
+      no.onclick=function(){c.status='declined';renderAll();toast('Declined. '+(p?first(p):'They')+' has been notified.')};
+      add(acts,ok,no);
+    }
+    if(mode==='queue'&&c.status==='approved'&&isAdmin()){
+      var pd=h('button','btn pri sm','Mark as paid');
+      pd.onclick=function(){c.status='paid';renderAll();toast('Marked as paid.')};
+      acts.appendChild(pd);
+    }
+    if(acts.childNodes.length)body.appendChild(acts);
+    add(el,thumb(c),body);
+    return el;
+  }
+  function renderClaims(){
+    $('rRoute').textContent=me().mgr&&U(me().mgr)?'This goes to '+U(me().mgr).name+'.':'This goes to leadership for approval.';
+    var q=$('claimQueue');q.innerHTML='';
+    $('claimApprove').hidden=!(isAdmin()||isMgr());
+    var list=claims.filter(function(c){return canAct(c.emp)&&(c.status==='pending'||(isAdmin()&&c.status==='approved'))});
+    if(!list.length)q.appendChild(h('div','empty','No claims waiting. Suspiciously tidy.'));
+    list.forEach(function(c){q.appendChild(claimCard(c,'queue'))});
+    var m=$('claimMine');m.innerHTML='';
+    var mine=claims.filter(function(c){return c.emp===meId}).slice().reverse();
+    if(!mine.length)m.appendChild(h('div','empty','No claims yet. Keep those bills safe.'));
+    mine.forEach(function(c){m.appendChild(claimCard(c,'mine'))});
+  }
+  $('rFile').onchange=function(){
+    var f=this.files[0],pv=$('rPrev');pv.innerHTML='';rImg='';rName='';rIsImg=false;
+    if(!f)return;
+    var isImg=/^image\//.test(f.type),isPdf=f.type==='application/pdf';
+    if(!isImg&&!isPdf){toast('Please add a photo, screenshot or PDF.');this.value='';return}
+    if(f.size>5*1024*1024){toast('That file is over 5 MB. Try a smaller one.');this.value='';return}
+    rName=f.name;rIsImg=isImg;
+    if(isImg){
+      var fr=new FileReader();
+      fr.onload=function(){rImg=fr.result;var im=document.createElement('img');im.src=rImg;im.alt='Bill preview';pv.appendChild(im);pv.appendChild(h('span',null,f.name))};
+      fr.onerror=function(){rName='';rIsImg=false;toast('Could not read that file. Try another.')};
+      fr.readAsDataURL(f);
+    }else{pv.appendChild(h('span',null,'PDF attached: '+f.name))}
+  };
+  $('rSend').onclick=function(){
+    var t=$('rTitle').value.trim(),a=parseFloat($('rAmt').value);
+    if(!t){toast('Give the claim a title.');return}
+    if(!(a>0)){toast('Add the amount you spent.');return}
+    if(!rName){toast('Attach the bill or a payment screenshot.');return}
+    if(rIsImg&&!rImg){toast('The photo is still loading. Try again in a second.');return}
+    claims.push({id:nextClaim++,emp:meId,title:t,amount:a,file:rName,img:rIsImg?rImg:'',status:'pending',date:TODAY});
+    $('rTitle').value='';$('rAmt').value='';$('rFile').value='';$('rPrev').innerHTML='';rImg='';rName='';rIsImg=false;
+    renderAll();toast('Claim sent to '+bossName(me())+'.');
+  };
+
+  /* profile */
+  function fld(parent,label,id,val,o){
+    o=o||{};
+    var w=h('div','f'),l=h('label',null,label);l.setAttribute('for',id);
+    var inp;
+    if(o.area){inp=document.createElement('textarea')}else{inp=document.createElement('input');inp.type=o.type||'text'}
+    inp.id=id;inp.value=val||'';
+    if(o.ro)inp.readOnly=true;
+    if(o.ph)inp.placeholder=o.ph;
+    if(o.mode)inp.setAttribute('inputmode',o.mode);
+    inp.setAttribute('autocomplete','off');
+    w.appendChild(l);
+    if(o.btn){var row=h('div','arow2');row.appendChild(inp);row.appendChild(o.btn);w.appendChild(row)}else{w.appendChild(inp)}
+    parent.appendChild(w);return inp;
+  }
+  function renderProfile(){
+    var admin=isAdmin(),sel=$('profWho');
+    var ids=active().map(function(u){return u.id});
+    if(!admin||ids.indexOf(profId)<0)profId=meId;
+    $('profPick').hidden=!admin;
+    if(admin){sel.innerHTML='';active().forEach(function(u){sel.appendChild(opt(u.id,u.name+(u.id===meId?' (you)':''),u.id===profId))})}
+    var u=U(profId),p=P(profId),own=profId===meId;
+    $('profBig').textContent=ini(u.name);
+    $('profName').textContent=u.name;
+    $('profSub').textContent=ROLE[u.role]+' · '+u.dept+(u.mgr&&U(u.mgr)?' · Reports to '+U(u.mgr).name:'');
+    $('profNote').textContent=own?'Keep these up to date. Payslips and reimbursements use them.':'You are viewing '+first(u)+'\'s details as HR Admin.';
+    var L=$('pLeft'),R=$('pRight');L.innerHTML='';R.innerHTML='';
+    L.appendChild(h('h3',null,'Work details'));
+    var r1=h('div','r2');fld(r1,'Employee ID','pEmpId',p.empId,{ro:true});fld(r1,'Joined','pJoined',fmtFull(p.joined),{ro:true});L.appendChild(r1);
+    fld(L,'Work email','pWorkEmail',u.email,{ro:true});
+    var r2=h('div','r2');fld(r2,'Team','pTeam',u.dept,{ro:true});fld(r2,'Role','pRole',ROLE[u.role],{ro:true});L.appendChild(r2);
+    L.appendChild(h('h3',null,'Personal'));
+    var r3=h('div','r2');fld(r3,'Date of birth','pDob',p.dob,{type:'date'});fld(r3,'Phone','pPhone',p.phone,{mode:'tel',ph:'10-digit mobile number'});L.appendChild(r3);
+    fld(L,'Personal email','pEmail',p.pemail,{mode:'email',ph:'name@example.com'});
+    var r4=h('div','r2');fld(r4,'Emergency contact','pEmName',p.emName,{ph:'Name'});fld(r4,'Emergency phone','pEmPhone',p.emPhone,{mode:'tel'});L.appendChild(r4);
+
+    R.appendChild(h('h3',null,'Address'));
+    fld(R,'Address','pAddr',p.addr,{area:true,ph:'House or flat, street, area'});
+    var r5=h('div','r2');fld(r5,'City','pCity',p.city);fld(r5,'State','pState',p.state);R.appendChild(r5);
+    fld(R,'PIN code','pPin',p.pin,{mode:'numeric',ph:'6 digits'});
+    R.appendChild(h('h3',null,'Bank and UPI'));
+    R.appendChild(add(h('p','note','Reimbursements are paid to these details.'),null));
+    fld(R,'Account holder name','pAcName',p.acName);
+    fld(R,'Bank name','pBank',p.bank);
+    var show=h('button','btn sm','Show');show.type='button';
+    var acc=fld(R,'Account number','pAcNo',p.acNo,{type:'password',mode:'numeric',btn:show});
+    show.onclick=function(){var hid=acc.type==='password';acc.type=hid?'text':'password';show.textContent=hid?'Hide':'Show'};
+    fld(R,'IFSC code','pIfsc',p.ifsc,{ph:'e.g. HDFC0001234'});
+    fld(R,'UPI ID','pUpi',p.upi,{ph:'name@bank'});
+  }
+  function cleanPhone(v){return v.replace(/[\s-]/g,'').replace(/^(\+91|0)/,'')}
+  $('profWho').onchange=function(){profId=this.value;renderProfile()};
+  $('profReset').onclick=function(){renderProfile();toast('Changes undone.')};
+  $('profSave').onclick=function(){
+    var p=P(profId);
+    function v(id){return $(id).value.trim()}
+    var phone=cleanPhone(v('pPhone')),emPhone=cleanPhone(v('pEmPhone'));
+    if(phone&&!/^[6-9]\d{9}$/.test(phone)){toast('Phone number should be 10 digits.');return}
+    if(emPhone&&!/^[6-9]\d{9}$/.test(emPhone)){toast('Emergency phone should be 10 digits.');return}
+    var pe=v('pEmail');
+    if(pe&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pe)){toast('Personal email does not look right.');return}
+    var pin=v('pPin');
+    if(pin&&!/^\d{6}$/.test(pin)){toast('PIN code should be 6 digits.');return}
+    var acc=v('pAcNo').replace(/\s/g,'');
+    if(acc&&!/^\d{9,18}$/.test(acc)){toast('Account number should be 9 to 18 digits.');return}
+    var ifsc=v('pIfsc').toUpperCase();
+    if(ifsc&&!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)){toast('IFSC should be 11 characters, like HDFC0001234.');return}
+    var upi=v('pUpi');
+    if(upi&&!/^[\w.\-]{2,}@[A-Za-z]{2,}$/.test(upi)){toast('UPI ID should look like name@bank.');return}
+    p.dob=v('pDob');p.phone=phone;p.pemail=pe;p.emName=v('pEmName');p.emPhone=emPhone;
+    p.addr=v('pAddr');p.city=v('pCity');p.state=v('pState');p.pin=pin;
+    p.acName=v('pAcName');p.bank=v('pBank');p.acNo=acc;p.ifsc=ifsc;p.upi=upi;
+    renderProfile();renderClaims();
+    toast(profId===meId?'Profile saved.':first(U(profId))+"'s profile saved.");
+  };
+
+  /* pay and cover */
+  function renderPay(){
+    var admin=isAdmin(),tabs=$('tabs');
+    tabs.hidden=!admin;
+    if(admin){
+      var ids=active().map(function(u){return u.id});
+      if(ids.indexOf(payId)<0)payId=ids.indexOf(meId)>=0?meId:ids[0];
+      tabs.innerHTML='';
+      active().forEach(function(p){
+        var b=h('button','tab',p.name);b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===payId?'true':'false');
+        b.onclick=function(){payId=p.id;renderPay()};tabs.appendChild(b);
+      });
+      $('payTitle').textContent='Everyone\'s money and cover.';
+      $('payNote').textContent='You can open any person\'s payslips and insurance. They only see their own.';
+    }else{
+      payId=meId;
+      $('payTitle').textContent='Your money. Your cover.';
+      $('payNote').textContent='Only you can see this part of the app. Nobody else gets a peek.';
+    }
+    var p=U(payId),sl=$('slips');sl.innerHTML='';
+    var hh=h('h3',null,'Payslips');hh.style.cssText='font-size:1.7rem;margin-bottom:6px';sl.appendChild(hh);
+    var sub=h('p','note',p.name+', '+p.dept);sub.style.margin='0 0 6px';sl.appendChild(sub);
+    var pay=PAY[payId];
+    if(!pay){sl.appendChild(h('div','empty','No payslips yet. The first one lands on the 1st.'))}
+    else['September 2026','August 2026','July 2026'].forEach(function(mo,i){
+      var row=h('div','slip'),l=h('div');
+      add(l,h('b',null,mo),h('span',null,'Net pay '+pay[i]));
+      var bt=h('button','btn sm','Download');bt.onclick=function(){toast('Sample only. Downloads switch on in the build.')};
+      add(row,l,bt);sl.appendChild(row);
+    });
+    var ins=$('insure');ins.innerHTML='';
+    ins.appendChild(h('h3',null,'Insurance'));
+    var i=INS[payId];
+    if(!i){ins.appendChild(h('p',null,'Cover details are not added yet. HR will add them for '+first(p)+'.'))}
+    else{
+      var dl=h('dl');
+      [['Policy',i.pol],['Cover',i.cover],['Covered',i.dep],['Employee',p.name]].forEach(function(kv){add(dl,h('dt',null,kv[0]),h('dd',null,kv[1]))});
+      ins.appendChild(dl);
+      var b1=h('button','btn sm','Download e-card');b1.style.marginRight='10px';b1.onclick=function(){toast('Sample only. E-cards switch on in the build.')};
+      var b2=h('button','btn pri sm','Raise a claim');b2.onclick=function(){toast('Claim form opens here in the build.')};
+      add(ins,b1,b2);
+    }
+  }
+
+  /* policies */
+  function renderPols(){
+    var box=$('pols');box.innerHTML='';
+    policies.forEach(function(p,idx){
+      var d=document.createElement('details');if(polOpen[idx])d.open=true;
+      d.addEventListener('toggle',function(){polOpen[idx]=d.open});
+      d.appendChild(h('summary',null,p.t));
+      var body=h('div','body');
+      if(polEdit===idx){
+        var ta=document.createElement('textarea');ta.value=p.b;ta.setAttribute('aria-label','Edit '+p.t);
+        var bar=h('div','bar');
+        var sv=h('button','btn ok sm','Save');sv.onclick=function(){var v=ta.value.trim();if(!v){toast('A rule with no words is not a rule.');return}p.b=v;polEdit=-1;renderPols();toast('Policy updated.')};
+        var cn=h('button','btn sm','Cancel');cn.onclick=function(){polEdit=-1;renderPols()};
+        add(bar,sv,cn);add(body,h('span','sass',p.s),ta,bar);
+      }else{
+        add(body,h('span','sass',p.s),h('p',null,p.b));
+        if(isAdmin()){
+          var bar2=h('div','bar'),ed=h('button','btn sm','Edit this rule');
+          ed.onclick=function(){polEdit=idx;polOpen[idx]=true;renderPols()};
+          add(bar2,ed);body.appendChild(bar2);
+        }
+      }
+      d.appendChild(body);box.appendChild(d);
+    });
+  }
+
+  /* talent */
+  function renderTalent(){
+    var t=$('tom');t.innerHTML='';
+    add(t,h('div','avatar',talent.ini),h('h3',null,talent.name),h('small',null,talent.dept+', '+talent.month),h('p','why',talent.why));
+    var c=h('button','btn');add(c,document.createTextNode('👏 Cheer '),h('span',null,cheers));
+    c.onclick=function(){cheers++;renderTalent();toast('Cheer sent to '+talent.name.split(' ')[0]+'.')};
+    t.appendChild(c);
+    var s=$('nomWho');s.innerHTML='';
+    active().filter(function(u){return u.id!==meId}).forEach(function(u){s.appendChild(opt(u.id,u.name))});
+    var l=$('nlist');l.innerHTML='';
+    if(!noms.length)l.appendChild(h('li',null,'No nominations yet. Be the first.'));
+    noms.forEach(function(n,idx){
+      var p=U(n.emp),li=h('li'),d=h('div');
+      add(d,h('b',null,p?p.name:'Former teammate'),h('br'),document.createTextNode(n.why),h('br'));
+      var by=h('span','note','Nominated by '+n.by);by.style.margin='0';d.appendChild(by);
+      li.appendChild(d);
+      if(isAdmin()&&p){
+        var cr=h('button','btn pri sm','Crown');
+        cr.onclick=function(){
+          wall.unshift({month:talent.month,name:talent.name,why:talent.why});
+          talent={name:p.name,ini:ini(p.name),dept:p.dept,month:nextMonth(talent.month),why:n.why};
+          cheers=0;noms.splice(idx,1);renderTalent();renderWall();toast(first(p)+' is the new Talent of the Month.');
+        };
+        li.appendChild(cr);
+      }
+      l.appendChild(li);
+    });
+  }
+  $('nomBtn').onclick=function(){
+    var who=$('nomWho').value,why=$('nomWhy').value.trim();
+    if(!who){toast('Pick someone to nominate.');return}
+    if(!why){toast('Add a reason. "Because" does not count.');return}
+    noms.unshift({emp:who,why:why,by:first(me())});
+    $('nomWhy').value='';renderTalent();toast('Nomination submitted.');
+  };
+
+  function renderWall(){
+    var w=$('wall');w.innerHTML='';
+    wall.forEach(function(e){add(w,add(h('div','pin'),h('div','mo',e.month),h('h3',null,e.name),h('p',null,e.why)))});
+  }
+
+  /* access */
+  function adminCount(){return users.filter(function(u){return u.active&&u.role==='admin'}).length}
+  function teamSelect(sel,label){
+    var s=document.createElement('select');s.setAttribute('aria-label',label);
+    var list=TEAMS.slice();if(sel&&list.indexOf(sel)<0)list.push(sel);
+    list.forEach(function(t){s.appendChild(opt(t,t,t===sel))});
+    return s;
+  }
+  function renderAccess(){
+    var ad=$('aDept');if(!ad.options.length||ad.options.length!==TEAMS.length){ad.innerHTML='';TEAMS.forEach(function(t){ad.appendChild(opt(t,t))})}
+    if(!isAdmin())return;
+    var box=$('arows');box.innerHTML='';
+    users.forEach(function(u){
+      var row=h('div','arow'),nm=h('div');
+      add(nm,h('b',null,u.name),h('span','d',u.email+(u.active?'':' · Paused')));
+      var rs=document.createElement('select');rs.setAttribute('aria-label','Role for '+u.name);
+      ['employee','manager','admin'].forEach(function(r){rs.appendChild(opt(r,ROLE[r],u.role===r))});
+      rs.onchange=function(){
+        if(u.role==='admin'&&this.value!=='admin'&&u.active&&adminCount()<2){toast('Keep at least one HR Admin.');renderAccess();return}
+        u.role=this.value;renderAll();
+      };
+      var ts=teamSelect(u.dept,'Team for '+u.name);
+      ts.onchange=function(){
+        var was=isGrowth(u);u.dept=this.value;renderAll();
+        toast(first(u)+' moved to '+u.dept+(isGrowth(u)&&!was?'. CRM access is on.':(was&&!isGrowth(u)?'. CRM access is off.':'.')));
+      };
+      var ms=document.createElement('select');ms.setAttribute('aria-label','Reports to, '+u.name);
+      ms.appendChild(opt('','No manager',!u.mgr));
+      users.filter(function(x){return x.id!==u.id&&x.active}).forEach(function(x){ms.appendChild(opt(x.id,'Reports to '+first(x),u.mgr===x.id))});
+      ms.onchange=function(){u.mgr=this.value;renderAll();toast(first(u)+' now reports to '+(u.mgr?first(U(u.mgr)):'no one')+'.')};
+      var tg=h('button','btn sm',u.active?'Pause':'Resume');
+      tg.onclick=function(){
+        if(u.active&&u.role==='admin'&&adminCount()<2){toast('Keep at least one HR Admin.');return}
+        u.active=!u.active;
+        if(u.id===meId&&!u.active){signOut();toast('You paused your own access, so you were signed out.');return}
+        renderAll();toast(first(u)+(u.active?' is back.':' is paused.'));
+      };
+      add(row,nm,rs,ts,ms,tg);box.appendChild(row);
+    });
+  }
+  $('aBtn').onclick=function(){
+    var n=$('aName').value.trim(),d=$('aDept').value||'Operations',r=$('aRole').value;
+    if(!n){toast('Add a name first.');return}
+    var id='u'+(nextUser++);
+    var slug=n.toLowerCase().replace(/[^a-z\s]/g,'').trim().replace(/\s+/g,'.')||id;
+    var email=slug+'@workfloww.ai';
+    if(users.some(function(x){return x.email===email}))email=slug+nextUser+'@workfloww.ai';
+    var boss=users.filter(function(u){return u.active&&u.role==='admin'})[0];
+    users.push({id:id,name:n,email:email,role:r,dept:d,color:COLORS[users.length%COLORS.length],mgr:boss?boss.id:'',active:true});
+    bal[id]={Casual:8,Sick:6,Earned:12};
+    $('aName').value='';
+    renderAll();toast(first(U(id))+' is in. Login: '+email);
+  };
+
+  function renderAll(){
+    if(!authed)return;
+    if(!me()||!me().active){signOut();return}
+    renderBar();renderHero();renderLeave();renderCal();renderClaims();renderProfile();renderPay();renderPols();renderTalent();renderWall();renderAccess();
+  }
+  renderDemo();
+})();
+</script>
+</body>
+</html>
