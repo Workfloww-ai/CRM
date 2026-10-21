@@ -11,6 +11,15 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Flowwies — Not if, but when.",
   description: "Enterprise HRMS for Workfloww.ai — Leave, reimbursements and applause.",
+  icons: {
+    icon: [
+      { url: "/logo.png", type: "image/png" },
+      { url: "/favicon.ico" },
+      { url: "/logo.jpeg", type: "image/jpeg" },
+    ],
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -20,6 +29,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={dmSans.className}>
+      <head>
+        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/logo.png" />
+      </head>
       <body>{children}</body>
     </html>
   );
