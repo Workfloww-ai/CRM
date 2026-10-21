@@ -43,6 +43,8 @@ Browser → Next.js frontend (Vercel) → Supabase Auth (JWT)
 SUPABASE_URL=https://jdfjonqnkrwhkoxqcloi.supabase.co
 SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...   # secret — backend only, never expose to frontend
+ALLOWED_ORIGINS=http://localhost:3000,https://crm.workfloww.ai   # comma-separated list of allowed origins
+ALLOWED_ORIGIN_REGEX=^https://([a-zA-Z0-9-]+\.)*workfloww\.ai$   # optional regex for allowed origins
 ```
 
 **Frontend** (`leads-crm-frontend/.env.local`, gitignored):
@@ -68,7 +70,7 @@ npm run dev
 ```
 App: `http://localhost:3000` (leads page at `/leads`)
 
-CORS is currently locked to `http://localhost:3000` in `main.py` — update `allow_origins` when deploying to a real domain.
+CORS origins are configured via `ALLOWED_ORIGINS` (comma-separated) and optional `ALLOWED_ORIGIN_REGEX` in `.env` (defaults to `http://localhost:3000` if unset).
 
 ## Database schema (current state)
 
