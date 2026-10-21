@@ -50,6 +50,9 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 import os
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
@@ -116,12 +119,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     traceback.print_exc()
     return JSONResponse(status_code=500, content={'detail': str(exc)}, headers={'Access-Control-Allow-Origin': '*'})
 
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173,https://crm.workfloww.ai,https://crm-git-main-workfloww.vercel.app,https://flowwies.workfloww.ai")
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [
+    origin.strip().strip('"\'')
+    for origin in allowed_origins_env.split(",")
+    if origin.strip().strip('"\'')
+] or ["http://localhost:3000"]
+allowed_origin_regex = (os.getenv("ALLOWED_ORIGIN_REGEX", "").strip().strip('"\'')) or None
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
