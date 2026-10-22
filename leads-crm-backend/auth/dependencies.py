@@ -31,6 +31,9 @@ def get_current_user(authorization: str = Header(None)):
             self.user = user
             self.token = token
         def __getattr__(self, item):
-            return getattr(self.user, item)
+            try:
+                return getattr(self.user, item)
+            except AttributeError:
+                return None
             
     return AuthenticatedUser(user_response.user, token)
