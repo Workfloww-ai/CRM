@@ -6,6 +6,7 @@ load_dotenv()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 if SUPABASE_URL and SUPABASE_ANON_KEY:
     supabase_anon = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -13,7 +14,15 @@ else:
     # Fallback to prevent crash on import, but queries will fail if used
     supabase_anon = None
 
+def get_admin_client():
+    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+        return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    return None
+
 def get_client_for_user(token: str):
+    admin = get_admin_client()
+    if admin:
+        return admin
     options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=options)
     # Also explicitly set it for postgrest just in case

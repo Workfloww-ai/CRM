@@ -133,21 +133,37 @@ def update_my_profile(body: ProfileSelfUpdate, user=Depends(get_current_user)):
         return {"status": "noop"}
 
     # Employees cannot edit their email or mobile phone number
+    prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).execute()
+    prof_data = prof.data[0] if (prof and prof.data) else {}
+    user_email = (getattr(user, "email", "") or "").lower()
     is_mgr = (
-        (user.role_level or 0) >= 1
-        or (getattr(user, "hrms_role", "") or "").lower() == "manager"
-        or user.email.lower().startswith("manish")
-        or user.email.lower().startswith("shilpa")
+        (prof_data.get("role_level") or 0) >= 1
+        or (prof_data.get("hrms_role") or "").lower() == "manager"
+        or user_email.startswith("manish")
+        or user_email.startswith("shilpa")
     )
     if not is_mgr:
         update_data.pop("phone", None)
         update_data.pop("email", None)
 
-    if not update_data:
-        return {"status": "noop", "message": "Email and phone can only be changed by managers."}
+    # Clean empty strings for date or uuid fields
+    for k in ["dob"]:
+        if k in update_data and (update_data[k] == "" or update_data[k] is None):
+            update_data[k] = None
 
-    res = update_hrms_profile(client, user.id, update_data)
-    return res.data[0] if res.data else {"status": "updated"}
+    try:
+        res = update_hrms_profile(client, user.id, update_data)
+        if not res.data:
+            # Fallback: if user.id from auth.users does not match profile.id, match by user.email
+            if hasattr(user, "email") and user.email:
+                res = client.table("profiles").update(update_data).eq("email", user.email.lower().strip()).execute()
+        if not res.data:
+            raise HTTPException(status_code=400, detail="Profile update affected 0 rows. Please check if profile exists.")
+        return res.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
 
 
 @router.get("/team")
@@ -206,7 +222,7 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
         update_data["can_access_crm"] = has_growth
 
     if body.manager_id is not None:
-        update_data["manager_id"] = body.manager_id if body.manager_id else None
+        update_data["manager_id"] = body.manager_id.strip() if (body.manager_id and body.manager_id.strip()) else None
 
     if body.can_access_crm is not None:
         update_data["can_access_crm"] = body.can_access_crm
@@ -224,13 +240,25 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
     ]:
         val = getattr(body, field, None)
         if val is not None:
+            # Clean empty strings for date and uuid fields to avoid Postgres syntax errors
+            if field in ["dob", "date_joined", "manager_id"] and val == "":
+                val = None
             update_data[field] = val
 
     if update_data:
         try:
-            update_team_member_admin(client, member_id, update_data)
+            res = update_team_member_admin(client, member_id, update_data)
+            if not res.data:
+                # Fallback: if member_id didn't match id in profiles, try matching by email
+                target_email = getattr(body, "email", None)
+                if target_email:
+                    res = client.table("profiles").update(update_data).eq("email", target_email.lower().strip()).execute()
+            if not res.data:
+                raise HTTPException(status_code=400, detail="Profile update affected 0 rows. Please verify member ID exists in profiles.")
+        except HTTPException:
+            raise
         except Exception as e:
-            print("Warning: updating profile admin fields failed:", e)
+            raise HTTPException(status_code=400, detail=f"Database update failed: {str(e)}")
 
     return {"status": "updated", "data": update_data}
 

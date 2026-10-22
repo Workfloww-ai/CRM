@@ -323,6 +323,14 @@ export default function FlowwiesApp() {
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [profileForm, setProfileForm] = useState<any>({});
   const [showAccNo, setShowAccNo] = useState(false);
+  const [isProfileDirty, setIsProfileDirty] = useState(false);
+  const isProfileDirtyRef = React.useRef(false);
+
+  const handleProfileFieldChange = (field: string, value: any) => {
+    setIsProfileDirty(true);
+    isProfileDirtyRef.current = true;
+    setProfileForm((prev: any) => ({ ...prev, [field]: value }));
+  };
 
   // View & Edit team member details modal (for managers)
   const [viewingMember, setViewingMember] = useState<Profile | null>(null);
@@ -433,20 +441,38 @@ export default function FlowwiesApp() {
     };
     initAuth();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, sess) => {
       setSession(sess);
       if (sess) {
         setToken(sess.access_token);
-        await loadUserProfile(sess.access_token);
+        // Only trigger initial profile load on SIGNED_IN event to prevent overwriting active edits
+        if (event === "SIGNED_IN") {
+          await loadUserProfile(sess.access_token);
+        }
       } else {
         setProfile(null);
         setToken("");
+        setIsProfileDirty(false);
+        isProfileDirtyRef.current = false;
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
+  }, []);
+
+  // Warn user on page refresh or tab close if there are unsaved profile changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isProfileDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = "You have unsaved changes in your profile. Are you sure you want to leave?";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   // Real Supabase Login
@@ -476,7 +502,7 @@ export default function FlowwiesApp() {
       if (data.session) {
         setSession(data.session);
         setToken(data.session.access_token);
-        await loadUserProfile(data.session.access_token);
+        await loadUserProfile(data.session.access_token, true);
         showNotification("Welcome back!");
       }
     } catch (err: any) {
@@ -487,7 +513,7 @@ export default function FlowwiesApp() {
   };
 
   // Load user profile from public.profiles
-  const loadUserProfile = async (jwt: string) => {
+  const loadUserProfile = async (jwt: string, forceReset = false) => {
     try {
       const res = await fetch(`${API_URL}/hrms/me`, {
         headers: { Authorization: `Bearer ${jwt}` },
@@ -497,7 +523,13 @@ export default function FlowwiesApp() {
         setProfile(p);
         setSelectedProfileId(p.id);
         setSelectedPayMemberId(p.id);
-        setProfileForm({ ...p });
+        setProfileForm((prev: any) => {
+          // If user has unsaved changes and not forced, keep their typed edits
+          if (!forceReset && isProfileDirtyRef.current) {
+            return prev;
+          }
+          return { ...p };
+        });
         await fetchAllData(jwt, p.id, p);
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1646,11 +1678,18 @@ export default function FlowwiesApp() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        setIsProfileDirty(false);
+        isProfileDirtyRef.current = false;
+        setProfile((prev) => (prev ? { ...prev, ...payload } : null));
+        setProfileForm((prev: any) => ({ ...prev, ...payload }));
         showNotification("Profile details saved successfully.");
         if (profile) fetchAllData(token, profile.id, profile);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showNotification(err.detail || "Failed to save profile.");
       }
-    } catch (e) {
-      showNotification("Failed to save profile.");
+    } catch (e: any) {
+      showNotification(e.message || "Failed to save profile.");
     }
   };
 
@@ -2155,100 +2194,166 @@ export default function FlowwiesApp() {
               <div className="w-20 h-20 rounded-full bg-[var(--vt2)] border-2 border-[var(--ink)] flex items-center justify-center text-3xl font-extrabold">
                 {getInitials(profile.full_name)}
               </div>
-              <div>
-                <h3 className="text-2xl font-bold">{profile.full_name}</h3>
-                <p className="text-[var(--muted)] text-sm">
+              <div className="flex-1">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-2xl font-bold">{profile.full_name}</h3>
+                  {isProfileDirty && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold inline-flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      Unsaved changes
+                    </span>
+                  )}
+                </div>
+                <p className="text-[var(--muted)] text-sm mt-0.5">
                   {profile.hrms_role.toUpperCase()} · {profile.department} · {profile.email}
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleSaveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Work Details */}
-              <div className="flow-card space-y-4">
-                <h3 className="text-xl font-bold mb-2">Work & Contact</h3>
-                <div>
-                  <label className="block text-xs font-bold mb-1">Employee ID</label>
-                  <input type="text" readOnly value={profile.emp_code || "FW-001"} className="flow-field bg-[var(--vs)]" />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold">Work email</label>
-                    <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
-                      Locked · Manager edit only
-                    </span>
-                  </div>
-                  <input type="text" readOnly disabled value={profile.email} className="flow-field bg-[var(--vs)] cursor-not-allowed opacity-80" />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold">Mobile phone</label>
-                    {!profile.is_manager && (
-                      <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
-                        Locked · Manager edit only
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="tel"
-                    readOnly={!profile.is_manager}
-                    disabled={!profile.is_manager}
-                    placeholder="10-digit mobile number"
-                    value={profileForm.phone || ""}
-                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                    className={`flow-field ${!profile.is_manager ? "bg-[var(--vs)] cursor-not-allowed opacity-80" : ""}`}
-                  />
-                  {!profile.is_manager && (
-                    <p className="text-[11px] text-[var(--muted)] mt-1">
-                      Employees cannot edit their phone number or email. Contact your manager for updates.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold">Personal email</label>
-                    {!profile.is_manager && (
-                      <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
-                        Locked · Manager edit only
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="email"
-                    readOnly={!profile.is_manager}
-                    disabled={!profile.is_manager}
-                    placeholder="personal@gmail.com"
-                    value={profileForm.personal_email || ""}
-                    onChange={(e) => setProfileForm({ ...profileForm, personal_email: e.target.value })}
-                    className={`flow-field ${!profile.is_manager ? "bg-[var(--vs)] cursor-not-allowed opacity-80" : ""}`}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+              {/* Left Column: Work, Contact & Address */}
+              <div className="space-y-6">
+                {/* Work Details & Contact */}
+                <div className="flow-card space-y-4">
+                  <h3 className="text-xl font-bold mb-2">Work & Contact</h3>
                   <div>
-                    <label className="block text-xs font-bold mb-1">Emergency contact</label>
+                    <label className="block text-xs font-bold mb-1">Employee ID</label>
                     <input
                       type="text"
-                      placeholder="Name"
-                      value={profileForm.emergency_contact_name || ""}
-                      onChange={(e) => setProfileForm({ ...profileForm, emergency_contact_name: e.target.value })}
-                      className="flow-field"
+                      readOnly
+                      value={profile.emp_code || (profile.id ? `FW-${profile.id.replace(/-/g, "").slice(0, 4).toUpperCase()}` : "FW-001")}
+                      className="flow-field bg-[var(--vs)] cursor-not-allowed opacity-80"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold mb-1">Emergency phone</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold">Work email</label>
+                      <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
+                        Locked · Manager edit only
+                      </span>
+                    </div>
+                    <input type="text" readOnly disabled value={profile.email} className="flow-field bg-[var(--vs)] cursor-not-allowed opacity-80" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold">Mobile phone</label>
+                      {!profile.is_manager && (
+                        <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
+                          Locked · Manager edit only
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="tel"
-                      placeholder="Phone"
-                      value={profileForm.emergency_contact_phone || ""}
-                      onChange={(e) => setProfileForm({ ...profileForm, emergency_contact_phone: e.target.value })}
-                      className="flow-field"
+                      readOnly={!profile.is_manager}
+                      disabled={!profile.is_manager}
+                      placeholder="10-digit mobile number"
+                      value={profileForm.phone || ""}
+                      onChange={(e) => handleProfileFieldChange("phone", e.target.value)}
+                      className={`flow-field ${!profile.is_manager ? "bg-[var(--vs)] cursor-not-allowed opacity-80" : ""}`}
                     />
+                    {!profile.is_manager && (
+                      <p className="text-[11px] text-[var(--muted)] mt-1">
+                        Employees cannot edit their phone number or email. Contact your manager for updates.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold">Personal email</label>
+                      {!profile.is_manager && (
+                        <span className="text-[10px] font-bold text-[var(--muted)] bg-[var(--vs)] px-2 py-0.5 rounded border border-[var(--line)]">
+                          Locked · Manager edit only
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="email"
+                      readOnly={!profile.is_manager}
+                      disabled={!profile.is_manager}
+                      placeholder="personal@gmail.com"
+                      value={profileForm.personal_email || ""}
+                      onChange={(e) => handleProfileFieldChange("personal_email", e.target.value)}
+                      className={`flow-field ${!profile.is_manager ? "bg-[var(--vs)] cursor-not-allowed opacity-80" : ""}`}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold mb-1">Emergency contact</label>
+                      <input
+                        type="text"
+                        placeholder="Name"
+                        value={profileForm.emergency_contact_name || ""}
+                        onChange={(e) => handleProfileFieldChange("emergency_contact_name", e.target.value)}
+                        className="flow-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1">Emergency phone</label>
+                      <input
+                        type="tel"
+                        placeholder="Phone"
+                        value={profileForm.emergency_contact_phone || ""}
+                        onChange={(e) => handleProfileFieldChange("emergency_contact_phone", e.target.value)}
+                        className="flow-field"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Residential Address Card */}
+                <div className="flow-card space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold">Residential Address</h3>
+                    <span className="text-[11px] text-[var(--muted)]">Self editable</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold mb-1">Street Address</label>
+                    <textarea
+                      rows={2}
+                      placeholder="House / Flat No., Building, Street, Area"
+                      value={profileForm.address || ""}
+                      onChange={(e) => handleProfileFieldChange("address", e.target.value)}
+                      className="flow-field resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold mb-1">City</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Mumbai"
+                        value={profileForm.city || ""}
+                        onChange={(e) => handleProfileFieldChange("city", e.target.value)}
+                        className="flow-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1">State</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Maharashtra"
+                        value={profileForm.state || ""}
+                        onChange={(e) => handleProfileFieldChange("state", e.target.value)}
+                        className="flow-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold mb-1">PIN Code</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 400001"
+                        value={profileForm.pin_code || ""}
+                        onChange={(e) => handleProfileFieldChange("pin_code", e.target.value)}
+                        className="flow-field"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Payout & Bank Info */}
-              <div className="flow-card space-y-4">
+              {/* Right Column: Payout & Bank Info */}
+              <div className="flow-card space-y-4 h-fit">
                 <h3 className="text-xl font-bold mb-2">Bank & UPI for Reimbursements</h3>
                 <div>
                   <label className="block text-xs font-bold mb-1">Account holder name</label>
@@ -2256,7 +2361,7 @@ export default function FlowwiesApp() {
                     type="text"
                     placeholder="Full name as in passbook"
                     value={profileForm.bank_account_holder || ""}
-                    onChange={(e) => setProfileForm({ ...profileForm, bank_account_holder: e.target.value })}
+                    onChange={(e) => handleProfileFieldChange("bank_account_holder", e.target.value)}
                     className="flow-field"
                   />
                 </div>
@@ -2266,7 +2371,7 @@ export default function FlowwiesApp() {
                     type="text"
                     placeholder="e.g. HDFC Bank, ICICI Bank"
                     value={profileForm.bank_name || ""}
-                    onChange={(e) => setProfileForm({ ...profileForm, bank_name: e.target.value })}
+                    onChange={(e) => handleProfileFieldChange("bank_name", e.target.value)}
                     className="flow-field"
                   />
                 </div>
@@ -2277,7 +2382,7 @@ export default function FlowwiesApp() {
                       type={showAccNo ? "text" : "password"}
                       placeholder="9 to 18 digits"
                       value={profileForm.bank_account_number || ""}
-                      onChange={(e) => setProfileForm({ ...profileForm, bank_account_number: e.target.value })}
+                      onChange={(e) => handleProfileFieldChange("bank_account_number", e.target.value)}
                       className="flow-field pr-10"
                     />
                     <button
@@ -2296,7 +2401,7 @@ export default function FlowwiesApp() {
                       type="text"
                       placeholder="HDFC0001234"
                       value={profileForm.ifsc_code || ""}
-                      onChange={(e) => setProfileForm({ ...profileForm, ifsc_code: e.target.value.toUpperCase() })}
+                      onChange={(e) => handleProfileFieldChange("ifsc_code", e.target.value.toUpperCase())}
                       className="flow-field"
                     />
                   </div>
@@ -2306,13 +2411,14 @@ export default function FlowwiesApp() {
                       type="text"
                       placeholder="name@okhdfcbank"
                       value={profileForm.upi_id || ""}
-                      onChange={(e) => setProfileForm({ ...profileForm, upi_id: e.target.value })}
+                      onChange={(e) => handleProfileFieldChange("upi_id", e.target.value)}
                       className="flow-field"
                     />
                   </div>
                 </div>
-                <button type="submit" className="flow-btn pri w-full py-2.5 mt-2">
-                  Save profile changes
+                <button type="submit" className="flow-btn pri w-full py-2.5 mt-2 flex items-center justify-center gap-2">
+                  <span>Save profile changes</span>
+                  {isProfileDirty && <span className="text-xs opacity-75 font-normal">(unsaved)</span>}
                 </button>
               </div>
             </form>
