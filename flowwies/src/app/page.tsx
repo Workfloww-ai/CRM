@@ -113,6 +113,7 @@ interface Claim {
   receipt_file_name?: string;
   receipt_storage_path?: string;
   is_image?: boolean;
+  target_manager?: string;
   status: "pending" | "approved" | "declined" | "paid";
   profiles?: {
     full_name: string;
@@ -291,10 +292,40 @@ export default function FlowwiesApp() {
   const [claimApprovals, setClaimApprovals] = useState<Claim[]>([]);
   const [newClaimTitle, setNewClaimTitle] = useState("");
   const [newClaimAmount, setNewClaimAmount] = useState("");
-  const [newClaimFileName, setNewClaimFileName] = useState("");
+  const [newClaimFile, setNewClaimFile] = useState<File | null>(null);
+  const [newClaimManager, setNewClaimManager] = useState("Both");
+  const [isSubmittingClaim, setIsSubmittingClaim] = useState(false);
 
   // Pay & cover states
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
+
+  const availableManagers = useMemo(() => {
+    const list: { id: string; name: string }[] = [];
+    const seen = new Set<string>();
+
+    teamMembers.forEach((m) => {
+      const isMgr =
+        m.role === "manager" ||
+        m.hrms_role === "manager" ||
+        (m.role_level && m.role_level >= 1) ||
+        m.email?.toLowerCase().includes("shilpa") ||
+        m.email?.toLowerCase().includes("manish");
+
+      if (isMgr && m.full_name && !seen.has(m.full_name.toLowerCase())) {
+        seen.add(m.full_name.toLowerCase());
+        list.push({ id: m.id, name: m.full_name });
+      }
+    });
+
+    if (!Array.from(seen).some((n) => n.includes("shilpa"))) {
+      list.push({ id: "shilpa", name: "Shilpa Chitkara" });
+    }
+    if (!Array.from(seen).some((n) => n.includes("manish"))) {
+      list.push({ id: "manish", name: "Manish Chum" });
+    }
+
+    return list;
+  }, [teamMembers]);
   const [selectedPayMemberId, setSelectedPayMemberId] = useState<string>("");
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [insurance, setInsurance] = useState<InsuranceCover | null>(null);
@@ -492,7 +523,7 @@ export default function FlowwiesApp() {
         if (error.message.toLowerCase().includes("email not confirmed")) {
           setLoginError("This email is not confirmed in Supabase yet. Please run migration 008 in Supabase SQL editor to auto-confirm all users.");
         } else if (error.message.toLowerCase().includes("invalid login credentials")) {
-          setLoginError("Invalid password or email. If you want to reset password to workfloww@2026, run migration 008 in Supabase SQL editor.");
+          setLoginError("Invalid password or email.");
         } else {
           setLoginError(error.message);
         }
@@ -934,10 +965,39 @@ export default function FlowwiesApp() {
       showNotification("Enter a valid amount spent.");
       return;
     }
-    if (!newClaimFileName) {
-      showNotification("Please attach the receipt filename.");
-      return;
+
+    setIsSubmittingClaim(true);
+    let receiptFileName: string | null = null;
+    let receiptStoragePath: string | null = null;
+    let isImage = false;
+
+    if (newClaimFile) {
+      try {
+        const formData = new FormData();
+        formData.append("file", newClaimFile);
+        const upRes = await fetch(`${API_URL}/hrms/reimbursements/upload-receipt`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+        if (upRes.ok) {
+          const upData = await upRes.json();
+          receiptFileName = upData.receipt_file_name || newClaimFile.name;
+          receiptStoragePath = upData.receipt_storage_path || null;
+          isImage = !!upData.is_image;
+        } else {
+          receiptFileName = newClaimFile.name;
+          isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(newClaimFile.name);
+        }
+      } catch (err) {
+        console.error("Receipt upload error:", err);
+        receiptFileName = newClaimFile.name;
+        isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(newClaimFile.name);
+      }
     }
+
     try {
       const res = await fetch(`${API_URL}/hrms/reimbursements`, {
         method: "POST",
@@ -946,21 +1006,53 @@ export default function FlowwiesApp() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: newClaimTitle,
+          title: newClaimTitle.trim(),
           amount: amt,
-          receipt_file_name: newClaimFileName,
-          is_image: /\.(jpg|jpeg|png|webp)$/i.test(newClaimFileName),
+          receipt_file_name: receiptFileName,
+          receipt_storage_path: receiptStoragePath,
+          is_image: isImage,
+          target_manager: newClaimManager,
         }),
       });
       if (res.ok) {
         showNotification("Expense claim submitted to approver.");
         setNewClaimTitle("");
         setNewClaimAmount("");
-        setNewClaimFileName("");
+        setNewClaimFile(null);
+        setNewClaimManager("Both");
         if (profile) fetchAllData(token, profile.id, profile);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        showNotification(errData.detail || "Failed to submit claim.");
       }
     } catch (err) {
       showNotification("Failed to submit claim.");
+    } finally {
+      setIsSubmittingClaim(false);
+    }
+  };
+
+  const handleViewReceipt = async (claim: Claim) => {
+    if (!claim.receipt_storage_path) {
+      if (claim.receipt_file_name) {
+        showNotification(`Receipt file: ${claim.receipt_file_name}`);
+      }
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/hrms/reimbursements/${claim.id}/receipt`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          window.open(data.url, "_blank");
+          return;
+        }
+      }
+      showNotification("Could not open receipt file.");
+    } catch (e) {
+      showNotification("Error loading receipt.");
     }
   };
 
@@ -2042,8 +2134,8 @@ export default function FlowwiesApp() {
         {activeTab === "reimbursements" ? (
           <div>
             <div className="mb-8">
-              <h2 className="text-4xl font-extrabold mb-2">Spent it? Show the receipt.</h2>
-              <p className="text-[var(--muted)]">Not if you get paid back. When the bill is uploaded.</p>
+              <h2 className="text-4xl font-extrabold mb-2">Spent it? Claim your reimbursement.</h2>
+              <p className="text-[var(--muted)]">Submit expense claims for swift approval and direct reimbursement.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -2076,21 +2168,73 @@ export default function FlowwiesApp() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold mb-1">Bill receipt or payment screenshot</label>
-                    <input
-                      type="text"
-                      placeholder="bill-receipt.jpg or invoice-001.pdf"
-                      value={newClaimFileName}
-                      onChange={(e) => setNewClaimFileName(e.target.value)}
+                    <label className="block text-sm font-bold mb-1">
+                      Approving Manager / Notify
+                    </label>
+                    <select
+                      value={newClaimManager}
+                      onChange={(e) => setNewClaimManager(e.target.value)}
                       className="flow-field"
-                      required
-                    />
+                    >
+                      <option value="Both">Both (Shilpa &amp; Manish)</option>
+                      {availableManagers.map((m) => (
+                        <option key={m.id} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
                     <p className="text-xs text-[var(--muted)] mt-1">
-                      No bill, no refund. Enter receipt filename.
+                      Route directly to a specific manager or both.
                     </p>
                   </div>
-                  <button type="submit" className="flow-btn pri w-full py-2.5">
-                    Submit claim
+                  <div>
+                    <label className="block text-sm font-bold mb-1">
+                      Bill receipt or payment screenshot <span className="font-normal text-[var(--muted)] text-xs">(Optional)</span>
+                    </label>
+                    <div className="mt-1 border-2 border-dashed border-[var(--line2)] rounded-2xl p-4 text-center hover:border-[var(--v)] transition-colors bg-[var(--bg)]/40">
+                      {newClaimFile ? (
+                        <div className="flex items-center justify-between gap-3 bg-[var(--card)] p-3 rounded-xl border border-[var(--line)]">
+                          <div className="flex items-center gap-2 overflow-hidden text-left">
+                            <FileText className="w-5 h-5 text-[var(--v)] shrink-0" />
+                            <div className="truncate">
+                              <p className="text-sm font-bold truncate">{newClaimFile.name}</p>
+                              <p className="text-xs text-[var(--muted)]">{(newClaimFile.size / 1024).toFixed(1)} KB</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setNewClaimFile(null)}
+                            className="p-1 rounded-lg hover:bg-[var(--vt2)] text-[var(--muted)] hover:text-red-500 transition-colors"
+                            title="Remove file"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block py-2">
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files?.[0]) {
+                                setNewClaimFile(e.target.files[0]);
+                              }
+                            }}
+                          />
+                          <div className="flex flex-col items-center justify-center gap-1.5">
+                            <div className="w-9 h-9 rounded-full bg-[var(--vt2)] flex items-center justify-center text-[var(--v)]">
+                              <Upload className="w-4 h-4" />
+                            </div>
+                            <p className="text-sm font-bold text-[var(--v)]">Click to upload receipt or screenshot</p>
+                            <p className="text-xs text-[var(--muted)]">PNG, JPG, PDF up to 10MB (Optional)</p>
+                          </div>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  <button type="submit" disabled={isSubmittingClaim} className="flow-btn pri w-full py-2.5">
+                    {isSubmittingClaim ? "Submitting claim..." : "Submit claim"}
                   </button>
                 </form>
               </div>
@@ -2114,8 +2258,24 @@ export default function FlowwiesApp() {
                               <div>
                                 <h4 className="font-bold text-lg">{c.title}</h4>
                                 <p className="text-2xl font-extrabold text-[var(--v)]">₹{c.amount.toLocaleString("en-IN")}</p>
-                                <p className="text-xs text-[var(--muted)] mt-1">
-                                  {c.profiles?.full_name} · {c.claim_date} · {c.receipt_file_name}
+                                <p className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <span>{c.profiles?.full_name} · {c.claim_date}</span>
+                                  <span className="font-semibold text-[var(--v)] bg-[var(--vt2)] px-2 py-0.5 rounded-full text-[11px]">
+                                    Approver: {c.target_manager || "Both (Shilpa & Manish)"}
+                                  </span>
+                                  {c.receipt_file_name ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleViewReceipt(c)}
+                                      className="inline-flex items-center gap-1 font-bold text-[var(--v)] hover:underline ml-1"
+                                      title="View / Download receipt"
+                                    >
+                                      <FileText className="w-3.5 h-3.5" />
+                                      <span>{c.receipt_file_name}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-[var(--muted)] italic ml-1">· No receipt attached</span>
+                                  )}
                                 </p>
                               </div>
                               <span className={`flow-tag ${c.status}`}>{c.status}</span>
@@ -2160,7 +2320,7 @@ export default function FlowwiesApp() {
                   <h3 className="text-xl font-bold mb-3">Your claims</h3>
                   {myClaims.length === 0 ? (
                     <div className="p-6 rounded-2xl border-2 border-dashed border-[var(--line2)] text-center text-[var(--muted)] font-bold">
-                      No claims yet. Keep those bills safe.
+                      No claims yet. Submit one whenever you have an expense.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2170,7 +2330,25 @@ export default function FlowwiesApp() {
                             <div>
                               <h4 className="font-bold">{c.title}</h4>
                               <p className="text-xl font-extrabold text-[var(--v)]">₹{c.amount.toLocaleString("en-IN")}</p>
-                              <p className="text-xs text-[var(--muted)] mt-1">{c.claim_date} · {c.receipt_file_name}</p>
+                              <p className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span>{c.claim_date}</span>
+                                <span className="font-semibold text-[var(--v)] bg-[var(--vt2)] px-2 py-0.5 rounded-full text-[11px]">
+                                  Approver: {c.target_manager || "Both (Shilpa & Manish)"}
+                                </span>
+                                {c.receipt_file_name ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewReceipt(c)}
+                                    className="inline-flex items-center gap-1 font-bold text-[var(--v)] hover:underline ml-1"
+                                    title="View / Download receipt"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>{c.receipt_file_name}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[var(--muted)] italic ml-1">· No receipt attached</span>
+                                )}
+                              </p>
                             </div>
                             <span className={`flow-tag ${c.status}`}>{c.status}</span>
                           </div>
