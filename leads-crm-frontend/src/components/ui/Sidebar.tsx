@@ -109,6 +109,14 @@ export function Sidebar({ profile }: SidebarProps) {
           {!isCollapsed && <span>Pipeline</span>}
         </Link>
         <Link
+          href="/competitors"
+          title={isCollapsed ? "Competitors" : ""}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/competitors' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
+        >
+          <Target className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          {!isCollapsed && <span>Competitors</span>}
+        </Link>
+        <Link
           href="/documents"
           title={isCollapsed ? "Documents" : ""}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/documents' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
