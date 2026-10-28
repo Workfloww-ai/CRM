@@ -256,6 +256,7 @@ class ReimbursementClaimCreate(BaseModel):
     receipt_storage_path: Optional[str] = None
     receipt_file_name: Optional[str] = None
     is_image: Optional[bool] = False
+    target_manager: Optional[str] = "Both"
 
 
 class ClaimDecision(BaseModel):

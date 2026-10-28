@@ -40,7 +40,11 @@ from db.queries import (
     create_talent_nomination,
     crown_new_talent,
     get_hall_of_flex,
-    delete_talent
+    delete_talent,
+    upload_document_to_storage,
+    get_signed_document_url,
+    upload_file_to_storage,
+    get_signed_attachment_url
 )
 from models import (
     ProfileSelfUpdate,
@@ -784,6 +788,8 @@ def list_reimbursement_approvals(user=Depends(require_hrms_manager_or_admin)):
     client = get_client_for_user(user.token)
     claims = get_reimbursements(client).data or []
     me = get_hrms_profile(client, user.id).data or {}
+    my_name = (me.get("full_name") or "").lower()
+    my_email = (me.get("email") or "").lower()
     is_admin = (me.get("role_level") or 0) >= 1 or (me.get("hrms_role") or "").lower() in ("admin", "manager")
 
     waiting = []
@@ -791,18 +797,81 @@ def list_reimbursement_approvals(user=Depends(require_hrms_manager_or_admin)):
         if c.get("user_id") == user.id:
             continue
         c_status = c.get("status")
-        # HR Admins (Shilpa & Manish) see both pending approval & approved waiting to be paid
+        target_mgr = (c.get("target_manager") or "both").lower()
+
+        # Check manager routing
+        matches_manager = False
+        if "both" in target_mgr:
+            matches_manager = True
+        elif my_name and (my_name in target_mgr or any(part in target_mgr for part in my_name.split() if len(part) > 2)):
+            matches_manager = True
+        elif "shilpa" in target_mgr and "shilpa" in my_email:
+            matches_manager = True
+        elif "manish" in target_mgr and "manish" in my_email:
+            matches_manager = True
+
         if is_admin:
-            if c_status in ("pending", "approved"):
+            if c_status == "pending" and matches_manager:
+                waiting.append(c)
+            elif c_status == "approved":
                 waiting.append(c)
         else:
-            # Manager sees pending claims from their reports
-            if c_status == "pending":
-                emp_prof = client.table("profiles").select("manager_id").eq("id", c.get("user_id")).single().execute()
-                if emp_prof.data and emp_prof.data.get("manager_id") == user.id:
-                    waiting.append(c)
+            if c_status == "pending" and matches_manager:
+                waiting.append(c)
 
     return waiting
+
+
+@router.post("/reimbursements/upload-receipt")
+def upload_reimbursement_receipt(file: UploadFile = File(...), user=Depends(get_current_user)):
+    import uuid
+    import re
+    client = get_client_for_user(user.token)
+    file_bytes = file.file.read()
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
+
+    clean_filename = re.sub(r"[^a-zA-Z0-9_.-]", "_", file.filename or "receipt")
+    storage_path = f"reimbursements/{user.id}/{uuid.uuid4()}_{clean_filename}"
+
+    # Try documents bucket, or fallback to lead-attachments bucket
+    try:
+        upload_document_to_storage(client, storage_path, file_bytes, file.content_type or "application/octet-stream")
+    except Exception:
+        try:
+            upload_file_to_storage(client, storage_path, file_bytes, file.content_type or "application/octet-stream")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to upload receipt file: {str(e)}")
+
+    is_img = bool(file.content_type and file.content_type.startswith("image/")) or bool(
+        re.search(r"\.(jpg|jpeg|png|webp|gif)$", clean_filename, re.I)
+    )
+    return {
+        "receipt_file_name": file.filename,
+        "receipt_storage_path": storage_path,
+        "is_image": is_img
+    }
+
+
+@router.get("/reimbursements/{claim_id}/receipt")
+def get_reimbursement_receipt(claim_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    claim = client.table("reimbursement_claims").select("*").eq("id", claim_id).single().execute()
+    if not claim.data:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    storage_path = claim.data.get("receipt_storage_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="No receipt stored for this claim")
+
+    try:
+        signed_url = get_signed_document_url(client, storage_path, expires_in=3600)
+    except Exception:
+        signed_url = get_signed_attachment_url(client, storage_path, expires_in=3600)
+
+    url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
+    return {"url": url_str}
 
 
 @router.post("/reimbursements")
@@ -811,6 +880,7 @@ def submit_reimbursement(body: ReimbursementClaimCreate, user=Depends(get_curren
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than 0")
 
+    target_mgr = body.target_manager or "Both"
     claim_data = {
         "user_id": user.id,
         "title": body.title,
@@ -818,9 +888,18 @@ def submit_reimbursement(body: ReimbursementClaimCreate, user=Depends(get_curren
         "receipt_storage_path": body.receipt_storage_path,
         "receipt_file_name": body.receipt_file_name,
         "is_image": body.is_image,
+        "target_manager": target_mgr,
         "status": "pending"
     }
-    res = create_reimbursement(client, claim_data)
+    try:
+        res = create_reimbursement(client, claim_data)
+    except Exception as e:
+        # Graceful fallback if target_manager column hasn't been added to DB yet
+        if "target_manager" in str(e).lower() or "schema cache" in str(e).lower():
+            claim_data.pop("target_manager", None)
+            res = create_reimbursement(client, claim_data)
+        else:
+            raise
     return res.data[0] if res.data else {"status": "submitted"}
 
 
