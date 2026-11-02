@@ -855,7 +855,7 @@ Mobile-+91- 995882445`;
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Training Partners</h1>
+            <h1 className="text-xl font-semibold">Consulting Partners</h1>
           </div>
         </header>
 

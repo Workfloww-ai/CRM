@@ -815,7 +815,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Channels</h1>
+            <h1 className="text-xl font-semibold">Direct Channel</h1>
           </div>
         </header>
 
@@ -825,7 +825,7 @@ export default function LeadsPage() {
               {importProgress && (
                 <div className="bg-white dark:bg-neutral-900 border border-brand-200 dark:border-brand-800/50 p-4 rounded-lg shadow-sm">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="font-medium text-gray-900 dark:text-white">Importing Channels...</span>
+                    <span className="font-medium text-gray-900 dark:text-white">Importing Direct Channel...</span>
                     <span className="text-gray-500 dark:text-gray-400">{importProgress.processed} / {importProgress.total} ({importProgress.percentage}%)</span>
                   </div>
                   <div className="w-full bg-gray-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
@@ -1292,7 +1292,7 @@ export default function LeadsPage() {
                     {leads.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
-                          No channels found matching your search.
+                          No Direct channel found matching your search.
                         </td>
                       </tr>
                     )}
