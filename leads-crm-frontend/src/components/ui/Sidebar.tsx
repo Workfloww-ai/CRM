@@ -56,7 +56,7 @@ export function Sidebar({ profile }: SidebarProps) {
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/leads' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
           <Network className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
-          {!isCollapsed && <span>Channels</span>}
+          {!isCollapsed && <span>Direct Channel</span>}
         </Link>
         <Link
           href="/training-partners"
@@ -64,7 +64,7 @@ export function Sidebar({ profile }: SidebarProps) {
           className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/training-partners' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
         >
           <GraduationCap className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
-          {!isCollapsed && <span>Training Partners</span>}
+          {!isCollapsed && <span>Consulting Partners</span>}
         </Link>
         <Link
           href="/fractional-leaders"

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, CornerUpRight } from 'lucide-react'
+import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, CornerUpRight, Globe, ExternalLink } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type Lead = {
@@ -20,6 +20,7 @@ type Lead = {
   phone: string | null
   phone_2: string | null
   linkedin: string | null
+  website: string | null
   location: string | null
   status: string
   next_action: string | null
@@ -132,6 +133,7 @@ export default function LeadsPage() {
       phone: lead.phone,
       phone_2: lead.phone_2,
       linkedin: lead.linkedin,
+      website: lead.website,
       location: lead.location,
       status: lead.status,
       next_action: lead.next_action,
@@ -174,6 +176,8 @@ export default function LeadsPage() {
   const [org, setOrg] = useState('')
   const [nextAction, setNextAction] = useState('')
   const [linkedin, setLinkedin] = useState('')
+  const [website, setWebsite] = useState('')
+  const [showWebsiteInput, setShowWebsiteInput] = useState(false)
   const [dueDate, setDueDate] = useState('')
   const [industry, setIndustry] = useState('')
   const [status, setStatus] = useState('New')
@@ -456,6 +460,7 @@ export default function LeadsPage() {
         phone_2: phone2,
         email,
         linkedin,
+        website: website.trim() || null,
         next_action: nextAction,
         due_date: dueDate || null,
         revenue: revenue ? Number(revenue) : null,
@@ -470,6 +475,8 @@ export default function LeadsPage() {
       setOrg('')
       setNextAction('')
       setLinkedin('')
+      setWebsite('')
+      setShowWebsiteInput(false)
       setDueDate('')
       setIndustry('')
       setStatus('New')
@@ -815,7 +822,7 @@ export default function LeadsPage() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-xl font-semibold">Channels</h1>
+            <h1 className="text-xl font-semibold">Direct Channel</h1>
           </div>
         </header>
 
@@ -825,7 +832,7 @@ export default function LeadsPage() {
               {importProgress && (
                 <div className="bg-white dark:bg-neutral-900 border border-brand-200 dark:border-brand-800/50 p-4 rounded-lg shadow-sm">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="font-medium text-gray-900 dark:text-white">Importing Channels...</span>
+                    <span className="font-medium text-gray-900 dark:text-white">Importing Direct Channel...</span>
                     <span className="text-gray-500 dark:text-gray-400">{importProgress.processed} / {importProgress.total} ({importProgress.percentage}%)</span>
                   </div>
                   <div className="w-full bg-gray-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
@@ -1204,7 +1211,21 @@ export default function LeadsPage() {
                           {lead.function || '—'}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
-                          {lead.org || '—'}
+                          <div className="flex items-center gap-1.5">
+                            <span>{lead.org || '—'}</span>
+                            {lead.website && (
+                              <a
+                                href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0"
+                                title={`Visit website: ${lead.website}`}
+                              >
+                                <Globe className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-500 dark:text-gray-300">
                           {lead.location || '—'}
@@ -1292,7 +1313,7 @@ export default function LeadsPage() {
                     {leads.length === 0 && (
                       <tr>
                         <td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
-                          No channels found matching your search.
+                          No Direct channel found matching your search.
                         </td>
                       </tr>
                     )}
@@ -1444,6 +1465,17 @@ export default function LeadsPage() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Email</label>
+              <input
+                type="email"
+                placeholder="e.g. name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Phone 1</label>
               <input
                 placeholder="+1 234 567 890"
@@ -1462,18 +1494,7 @@ export default function LeadsPage() {
               />
             </div>
 
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Email</label>
-              <input
-                type="email"
-                placeholder="e.g. name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-            
-            <div className="col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">LinkedIn URL</label>
               <input
                 placeholder="https://linkedin.com/in/..."
@@ -1481,6 +1502,55 @@ export default function LeadsPage() {
                 onChange={(e) => setLinkedin(e.target.value)}
                 className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
               />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300">Website URL</label>
+                {!showWebsiteInput && !website && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWebsiteInput(true)}
+                    className="text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 font-medium flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Website Link
+                  </button>
+                )}
+              </div>
+              {showWebsiteInput || website ? (
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 text-gray-400 pointer-events-none">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://example.com"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    className="w-full pl-9 pr-9 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                  />
+                  {website && (
+                    <a
+                      href={website.startsWith('http') ? website : `https://${website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute right-2.5 p-1 text-gray-400 hover:text-brand-600 transition-colors"
+                      title="Open link"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowWebsiteInput(true)}
+                  className="w-full py-2 px-3 border border-dashed border-gray-300 dark:border-neutral-700 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-500 dark:hover:border-brand-500 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>+ Add Website Link</span>
+                </button>
+              )}
             </div>
 
             <div>
@@ -1503,7 +1573,7 @@ export default function LeadsPage() {
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800">
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800 sticky bottom-0 bg-white dark:bg-neutral-900 pb-1 z-10">
             <button
               type="button"
               onClick={() => setIsAddLeadModalOpen(false)}
@@ -1654,6 +1724,37 @@ export default function LeadsPage() {
                         ) : '—'}
                       </div>
                     </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Website</div>
+                      <div className="text-sm text-gray-900 dark:text-gray-200 break-words flex items-center gap-2">
+                        {expandedLead.website ? (
+                          <>
+                            <a
+                              href={expandedLead.website.startsWith('http') ? expandedLead.website : `https://${expandedLead.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-600 hover:underline flex items-center gap-1.5 truncate max-w-[200px]"
+                            >
+                              <Globe className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{expandedLead.website}</span>
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                            </a>
+                            <CopyButton text={expandedLead.website} />
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditForm(expandedLead);
+                              setIsEditingContact(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 font-medium py-1 px-2.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/20 border border-brand-200 dark:border-brand-800 transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Website Link</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1724,6 +1825,28 @@ export default function LeadsPage() {
                     <div>
                       <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">LinkedIn URL</div>
                       <input value={editForm.linkedin || ''} onChange={(e) => setEditForm({ ...editForm, linkedin: e.target.value })} placeholder="https://linkedin.com/in/..." className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Website URL</div>
+                      <div className="relative flex items-center">
+                        <input
+                          value={editForm.website || ''}
+                          onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
+                          placeholder="https://example.com"
+                          className="w-full px-2 py-1.5 pr-8 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                        />
+                        {editForm.website && (
+                          <a
+                            href={editForm.website.startsWith('http') ? editForm.website : `https://${editForm.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute right-2 text-gray-400 hover:text-brand-600 transition-colors"
+                            title="Visit website"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
