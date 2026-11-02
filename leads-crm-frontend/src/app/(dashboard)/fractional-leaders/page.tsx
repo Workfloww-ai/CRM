@@ -1433,6 +1433,17 @@ Mobile: +91-995882445`;
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Email</label>
+              <input
+                type="email"
+                placeholder="e.g. name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Phone 1</label>
               <input
                 placeholder="+1 234 567 890"
@@ -1451,18 +1462,7 @@ Mobile: +91-995882445`;
               />
             </div>
 
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Email</label>
-              <input
-                type="email"
-                placeholder="e.g. name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
-              />
-            </div>
-
-            <div className="col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">LinkedIn URL</label>
               <input
                 placeholder="https://linkedin.com/in/..."
@@ -1472,7 +1472,7 @@ Mobile: +91-995882445`;
               />
             </div>
 
-            <div className="col-span-2">
+            <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-sm font-medium text-gray-700 dark:text-neutral-300">Website URL</label>
                 {!showWebsiteInput && !website && (
@@ -1541,7 +1541,7 @@ Mobile: +91-995882445`;
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800">
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-neutral-800 sticky bottom-0 bg-white dark:bg-neutral-900 pb-1 z-10">
             <button
               type="button"
               onClick={() => setIsAddLeaderModalOpen(false)}
