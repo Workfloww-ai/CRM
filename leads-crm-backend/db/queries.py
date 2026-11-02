@@ -3,7 +3,7 @@
 
 LEAD_COLUMNS = (
     "id, first_name, last_name, title, org, email, phone, phone_2, "
-    "linkedin, location, industry, function, revenue, currency, status, "
+    "linkedin, website, location, industry, function, revenue, currency, status, "
     "next_action, next_action_assignee, due_date, created_at, updated_at, deleted_at"
 )
 PROFILE_COLUMNS = "id, full_name, email, role_level, created_at"
@@ -188,7 +188,7 @@ def delete_investor(client, id: str):
 
 FRACTIONAL_LEADER_COLUMNS = (
     "id, first_name, last_name, title, email, phone, phone_2, domain, industry, "
-    "function, linkedin, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
+    "function, linkedin, website, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
     "created_at, updated_at, deleted_at"
 )
 
@@ -234,7 +234,7 @@ def delete_fractional_leader(client, id: str):
 
 TRAINING_PARTNER_COLUMNS = (
     "id, first_name, last_name, title, email, phone, phone_2, organization, industry, "
-    "function, linkedin, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
+    "function, linkedin, website, location, revenue, currency, status, next_action, next_action_assignee, due_date, "
     "created_at, updated_at, deleted_at"
 )
 
