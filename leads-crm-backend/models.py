@@ -11,6 +11,7 @@ class LeadCreate(BaseModel):
     phone: Optional[str] = None
     phone_2: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     industry: Optional[str] = None
     function: Optional[str] = None
@@ -31,6 +32,7 @@ class LeadUpdate(BaseModel):
     phone: Optional[str] = None
     phone_2: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     industry: Optional[str] = None
     function: Optional[str] = None
@@ -94,6 +96,7 @@ class FractionalLeaderCreate(BaseModel):
     industry: Optional[str] = None
     function: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
@@ -114,6 +117,7 @@ class FractionalLeaderUpdate(BaseModel):
     industry: Optional[str] = None
     function: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
@@ -134,6 +138,7 @@ class TrainingPartnerCreate(BaseModel):
     industry: Optional[str] = None
     function: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     status: str = "New"
     next_action: Optional[str] = None
@@ -154,6 +159,7 @@ class TrainingPartnerUpdate(BaseModel):
     industry: Optional[str] = None
     function: Optional[str] = None
     linkedin: Optional[str] = None
+    website: Optional[str] = None
     location: Optional[str] = None
     status: Optional[str] = None
     next_action: Optional[str] = None
@@ -296,3 +302,53 @@ class HolidayCreate(BaseModel):
 
 class HolidayBulkUpload(BaseModel):
     holidays: list[HolidayCreate]
+
+
+# =========================================================================
+# ATTENDANCE MODELS
+# =========================================================================
+
+class CheckInRequest(BaseModel):
+    latitude: float
+    longitude: float
+    source: Optional[str] = "web"
+    notes: Optional[str] = None
+
+
+class CheckOutRequest(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class SiteCreate(BaseModel):
+    name: str
+    address: Optional[str] = None
+    latitude: float
+    longitude: float
+    radius_meters: Optional[int] = 200
+    is_active: Optional[bool] = True
+
+
+class SiteUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    radius_meters: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class ShiftCreate(BaseModel):
+    name: str
+    start_time: str = "09:00"
+    end_time: str = "18:00"
+    grace_minutes: int = 15
+    is_default: bool = False
+
+
+class AttendanceManualCorrection(BaseModel):
+    status: Optional[str] = None
+    check_in_at: Optional[str] = None
+    check_out_at: Optional[str] = None
+    notes: Optional[str] = None
