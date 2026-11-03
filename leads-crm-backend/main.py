@@ -6,6 +6,7 @@ from db.queries import (
     get_leads_page,
     create_lead as db_create_lead,
     create_activity,
+    delete_activity,
     update_lead as db_update_lead,
     get_lead_status,
     delete_lead as db_delete_lead,
@@ -247,12 +248,27 @@ def get_lead_activities(request: Request, lead_id: str, user=Depends(get_current
 @limiter.limit("60/minute")
 def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
-    create_activity(client, {
+    activity_data = {
         "lead_id": lead_id,
         "user_id": user.id,
         "type": "note",
         "content": note.content,
-    })
+    }
+    if note.metadata:
+        activity_data["metadata"] = note.metadata
+    create_activity(client, activity_data)
+    return {"status": "ok"}
+
+@app.delete("/leads/{lead_id}/activities/{activity_id}")
+@limiter.limit("60/minute")
+def delete_lead_activity(request: Request, lead_id: str, activity_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = delete_activity(client, activity_id)
+    if not res.data:
+        raise HTTPException(
+            status_code=403,
+            detail="Database blocked deletion. Please run migration 014_add_delete_activity_policy.sql in Supabase SQL editor or add SUPABASE_SERVICE_ROLE_KEY to backend .env."
+        )
     return {"status": "ok"}
 
 @app.get("/leads/export")

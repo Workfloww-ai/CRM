@@ -45,6 +45,7 @@ class LeadUpdate(BaseModel):
 
 class NoteCreate(BaseModel):
     content: str
+    metadata: Optional[dict] = None
 
 
 class InvestorCreate(BaseModel):

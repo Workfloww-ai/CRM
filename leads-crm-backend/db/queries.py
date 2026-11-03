@@ -84,6 +84,10 @@ def create_activity(client, activity_data: dict):
     return client.table("lead_activities").insert(activity_data).execute()
 
 
+def delete_activity(client, activity_id: str):
+    return client.table("lead_activities").delete().eq("id", activity_id).execute()
+
+
 def get_lead_activities(client, lead_id: str):
     return client.table("lead_activities").select(f"{ACTIVITY_COLUMNS}, profiles(full_name)").eq("lead_id", lead_id).order("created_at", desc=True).execute()
 
