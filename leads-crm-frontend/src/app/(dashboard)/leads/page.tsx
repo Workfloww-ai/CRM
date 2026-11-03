@@ -290,6 +290,7 @@ export default function LeadsPage() {
   const [isSavingInsight, setIsSavingInsight] = useState(false)
   const [speechError, setSpeechError] = useState<string | null>(null)
   const [wasVoiceRecorded, setWasVoiceRecorded] = useState(false)
+  const [actionItemNotice, setActionItemNotice] = useState<string | null>(null)
   const recognitionRef = useRef<any>(null)
   const baseTextRef = useRef('')
 
@@ -749,6 +750,11 @@ export default function LeadsPage() {
       })
 
       if (res.ok) {
+        const resData = await res.json().catch(() => ({}))
+        if (resData.action_item_created && resData.action_item?.task) {
+          setActionItemNotice(`AI Action Item created: "${resData.action_item.task}" (View in Action Items)`)
+          setTimeout(() => setActionItemNotice(null), 8000)
+        }
         setInsightText('')
         setWasVoiceRecorded(false)
         if (isListening && recognitionRef.current) {
@@ -2161,6 +2167,18 @@ export default function LeadsPage() {
                       )}
                     </div>
                   </div>
+
+                  {actionItemNotice && (
+                    <div className="mb-2 p-2.5 bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 rounded-lg text-xs text-brand-800 dark:text-brand-300 flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
+                        <span className="font-medium">{actionItemNotice}</span>
+                      </div>
+                      <button type="button" onClick={() => setActionItemNotice(null)} className="text-brand-500 hover:text-brand-700 ml-2">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Speech status / error alerts */}
                   {speechError && (

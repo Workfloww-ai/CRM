@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, Settings, LogOut, Kanban, ListTodo, ChevronLeft, ChevronRight, Building2, Folder, Network, Briefcase, GraduationCap, Target, Coins } from 'lucide-react'
+import { LayoutDashboard, Users, Settings, LogOut, Kanban, ListTodo, ChevronLeft, ChevronRight, Building2, Folder, Network, Briefcase, GraduationCap, Target, Coins, CheckSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -123,6 +123,14 @@ export function Sidebar({ profile }: SidebarProps) {
         >
           <Folder className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
           {!isCollapsed && <span>Documents</span>}
+        </Link>
+        <Link
+          href="/action-items"
+          title={isCollapsed ? "Action Items" : ""}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg font-medium transition-colors ${pathname === '/action-items' ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-400' : 'text-gray-600 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-800'}`}
+        >
+          <CheckSquare className={`w-5 h-5 shrink-0 ${isCollapsed ? 'mx-auto' : ''}`} />
+          {!isCollapsed && <span>Action Items</span>}
         </Link>
       </div>
 

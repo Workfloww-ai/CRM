@@ -353,3 +353,9 @@ class AttendanceManualCorrection(BaseModel):
     check_in_at: Optional[str] = None
     check_out_at: Optional[str] = None
     notes: Optional[str] = None
+
+
+class ActionItemUpdate(BaseModel):
+    status: Optional[str] = None
+    task: Optional[str] = None
+    due_date: Optional[str] = None

@@ -612,3 +612,43 @@ def delete_talent(client, talent_id: str):
     return client.table("talent_of_the_month").delete().eq("id", talent_id).execute()
 
 
+
+
+# Action Items Queries
+def create_action_item(client, action_data: dict):
+    return client.table("action_items").insert(action_data).execute()
+
+
+def get_action_items(client, user_id: str = None, status: str = None, lead_id: str = None):
+    query = client.table("action_items").select(
+        "id, lead_id, user_id, activity_id, task, due_date, status, created_at, completed_at, "
+        "leads(id, first_name, last_name, org, title, status), "
+        "profiles(id, full_name, email), "
+        "lead_activities(id, content)"
+    )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    if status:
+        query = query.eq("status", status)
+    if lead_id:
+        query = query.eq("lead_id", lead_id)
+    return query.order("created_at", desc=True).execute()
+
+
+def update_action_item(client, item_id: str, update_data: dict):
+    from datetime import datetime, timezone
+    clean_data = {k: v for k, v in update_data.items() if v is not None}
+    if "status" in clean_data:
+        if clean_data["status"] == "completed":
+            clean_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+        elif clean_data["status"] == "pending":
+            clean_data["completed_at"] = None
+    return client.table("action_items").update(clean_data).eq("id", item_id).execute()
+
+
+def delete_action_item(client, item_id: str):
+    return client.table("action_items").delete().eq("id", item_id).execute()
+
+
+def get_lead_details(client, lead_id: str):
+    return client.table("leads").select("id, first_name, last_name, org, title").eq("id", lead_id).single().execute()
