@@ -241,7 +241,7 @@ export default function ActionItemsPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-gray-900 dark:text-white leading-tight flex items-center gap-2">
-                Action Items
+                Insights Analysis
               </h1>
               
             </div>
@@ -334,7 +334,7 @@ export default function ActionItemsPage() {
             onChange={(e) => setMyTasksOnly(e.target.checked)}
             className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-gray-300 dark:border-neutral-700"
           />
-          <span>My Action Items Only</span>
+          <span>My Tasks Only</span>
         </label>
       </div>
 
