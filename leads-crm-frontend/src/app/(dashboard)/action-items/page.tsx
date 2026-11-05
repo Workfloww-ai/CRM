@@ -24,7 +24,11 @@ import Link from 'next/link'
 
 type ActionItem = {
   id: string
-  lead_id: string
+  lead_id?: string | null
+  training_partner_id?: string | null
+  fractional_leader_id?: string | null
+  channel?: 'direct_channel' | 'consulting_partner' | 'fractional_leader' | string | null
+  source_insight?: string | null
   user_id: string
   activity_id: string | null
   task: string
@@ -40,6 +44,22 @@ type ActionItem = {
     title: string | null
     status: string | null
   } | null
+  training_partners?: {
+    id: string
+    first_name: string
+    last_name: string | null
+    organization: string | null
+    title: string | null
+    status: string | null
+  } | null
+  fractional_leaders?: {
+    id: string
+    first_name: string
+    last_name: string | null
+    domain: string | null
+    title: string | null
+    status: string | null
+  } | null
   profiles?: {
     id: string
     full_name: string
@@ -49,6 +69,40 @@ type ActionItem = {
     id: string
     content: string
   } | null
+}
+
+function getEntityInfo(item: ActionItem) {
+  if (item.channel === 'consulting_partner' || item.training_partner_id) {
+    const tp = item.training_partners
+    return {
+      name: tp ? `${tp.first_name} ${tp.last_name || ''}`.trim() : 'Consulting Partner',
+      subtitle: tp?.organization || tp?.title || '',
+      href: tp ? `/training-partners?id=${tp.id}` : '/training-partners',
+      channelBadge: 'Consulting Partner',
+      channelBadgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-900',
+      exists: !!tp
+    }
+  }
+  if (item.channel === 'fractional_leader' || item.fractional_leader_id) {
+    const fl = item.fractional_leaders
+    return {
+      name: fl ? `${fl.first_name} ${fl.last_name || ''}`.trim() : 'Fractional Leader',
+      subtitle: fl?.domain || fl?.title || '',
+      href: fl ? `/fractional-leaders?id=${fl.id}` : '/fractional-leaders',
+      channelBadge: 'Fractional Leader',
+      channelBadgeClass: 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-900',
+      exists: !!fl
+    }
+  }
+  const l = item.leads
+  return {
+    name: l ? `${l.first_name} ${l.last_name || ''}`.trim() : 'Direct Channel Lead',
+    subtitle: l?.org || l?.title || '',
+    href: l ? `/leads?id=${l.id}` : '/leads',
+    channelBadge: 'Direct Channel',
+    channelBadgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+    exists: !!l
+  }
 }
 
 function formatUserName(fullName: string | null | undefined) {
@@ -210,13 +264,13 @@ export default function ActionItemsPage() {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const taskMatch = item.task.toLowerCase().includes(q)
-        const leadMatch = item.leads
-          ? `${item.leads.first_name} ${item.leads.last_name || ''} ${item.leads.org || ''}`
-              .toLowerCase()
-              .includes(q)
-          : false
+        const entity = getEntityInfo(item)
+        const entityMatch =
+          entity.name.toLowerCase().includes(q) ||
+          entity.subtitle.toLowerCase().includes(q) ||
+          entity.channelBadge.toLowerCase().includes(q)
         const userMatch = item.profiles?.full_name?.toLowerCase().includes(q) || false
-        if (!taskMatch && !leadMatch && !userMatch) return false
+        if (!taskMatch && !entityMatch && !userMatch) return false
       }
 
       return true
@@ -358,7 +412,7 @@ export default function ActionItemsPage() {
                 : 'No action items found'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-4">
-              When call insights are recorded in Direct Channel, the AI model automatically detects actionable commitments, assigns them to you, and lists them here.
+              When call insights are recorded across Direct Channel, Consulting Partners, or Fractional Leaders, the AI model automatically detects actionable commitments, assigns them to you, and lists them here.
             </p>
             <Link
               href="/leads"
@@ -375,7 +429,7 @@ export default function ActionItemsPage() {
                   <tr className="border-b border-gray-200 dark:border-neutral-800 bg-gray-50/75 dark:bg-neutral-950/50 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     <th className="py-3.5 pl-6 pr-3 w-12 text-center">Status</th>
                     <th className="py-3.5 px-4 min-w-[280px]">Action Item / Task</th>
-                    <th className="py-3.5 px-4 min-w-[180px]">Lead & Company</th>
+                    <th className="py-3.5 px-4 min-w-[200px]">Contact & Organization</th>
                     <th className="py-3.5 px-4 min-w-[140px]">Assignee (Insight Creator)</th>
                     <th className="py-3.5 px-4 min-w-[110px]">Date Added</th>
                     <th className="py-3.5 px-4 min-w-[120px]">Closed By (Due)</th>
@@ -424,37 +478,45 @@ export default function ActionItemsPage() {
                             </p>
 
                             {/* Source insight preview snippet */}
-                            {item.lead_activities?.content && (
+                            {(item.source_insight || item.lead_activities?.content) && (
                               <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-start gap-1 bg-gray-50 dark:bg-neutral-950/70 p-2 rounded-md border border-gray-100 dark:border-neutral-800 mt-1 max-w-xl">
                                 <MessageSquare className="w-3 h-3 text-gray-400 shrink-0 mt-0.5" />
                                 <span className="line-clamp-2 italic">
-                                  &quot;{item.lead_activities.content}&quot;
+                                  &quot;{item.source_insight || item.lead_activities?.content}&quot;
                                 </span>
                               </div>
                             )}
                           </div>
                         </td>
 
-                        {/* Lead & Company */}
+                        {/* Contact & Organization */}
                         <td className="py-4 px-4 align-top">
-                          {item.leads ? (
-                            <div>
-                              <Link
-                                href={`/leads?id=${item.lead_id}`}
-                                className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:underline inline-flex items-center gap-1 group/lead"
-                              >
-                                <span>{item.leads.first_name} {item.leads.last_name || ''}</span>
-                                <ExternalLink className="w-3 h-3 opacity-0 group-hover/lead:opacity-100 transition-opacity" />
-                              </Link>
-                              {item.leads.org && (
-                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[180px]">
-                                  {item.leads.org}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">Lead deleted</span>
-                          )}
+                          {(() => {
+                            const entity = getEntityInfo(item)
+                            return (
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Link
+                                    href={entity.href}
+                                    className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:underline inline-flex items-center gap-1 group/lead"
+                                  >
+                                    <span>{entity.name}</span>
+                                    <ExternalLink className="w-3 h-3 opacity-0 group-hover/lead:opacity-100 transition-opacity" />
+                                  </Link>
+                                </div>
+                                {entity.subtitle && (
+                                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[180px]">
+                                    {entity.subtitle}
+                                  </p>
+                                )}
+                                <div className="mt-1">
+                                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${entity.channelBadgeClass}`}>
+                                    {entity.channelBadge}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </td>
 
                         {/* Assignee / Creator */}

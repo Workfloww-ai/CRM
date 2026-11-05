@@ -283,6 +283,9 @@ def get_fractional_leader_activities(client, leader_id: str):
 def create_fractional_leader_activity(client, activity_data: dict):
     return client.table("fractional_leader_activities").insert(activity_data).execute()
 
+def delete_fractional_leader_activity(client, activity_id: str):
+    return client.table("fractional_leader_activities").delete().eq("id", activity_id).execute()
+
 
 def get_investor_activities(client, investor_id: str):
     cols = ACTIVITY_COLUMNS.replace('lead_id', 'investor_id')
@@ -297,6 +300,9 @@ def get_training_partner_activities(client, training_partner_id: str):
 
 def create_training_partner_activity(client, activity_data: dict):
     return client.table("training_partner_activities").insert(activity_data).execute()
+
+def delete_training_partner_activity(client, activity_id: str):
+    return client.table("training_partner_activities").delete().eq("id", activity_id).execute()
 
 # --- Competitors ---
 
@@ -619,12 +625,21 @@ def create_action_item(client, action_data: dict):
     return client.table("action_items").insert(action_data).execute()
 
 
-def get_action_items(client, user_id: str = None, status: str = None, lead_id: str = None):
+def get_action_items(
+    client,
+    user_id: str = None,
+    status: str = None,
+    lead_id: str = None,
+    training_partner_id: str = None,
+    fractional_leader_id: str = None,
+    channel: str = None
+):
     query = client.table("action_items").select(
-        "id, lead_id, user_id, activity_id, task, due_date, status, created_at, completed_at, "
+        "id, lead_id, training_partner_id, fractional_leader_id, channel, source_insight, user_id, activity_id, task, due_date, status, created_at, completed_at, "
         "leads(id, first_name, last_name, org, title, status), "
-        "profiles(id, full_name, email), "
-        "lead_activities(id, content)"
+        "training_partners(id, first_name, last_name, organization, title, status), "
+        "fractional_leaders(id, first_name, last_name, domain, title, status), "
+        "profiles(id, full_name, email)"
     )
     if user_id:
         query = query.eq("user_id", user_id)
@@ -632,6 +647,12 @@ def get_action_items(client, user_id: str = None, status: str = None, lead_id: s
         query = query.eq("status", status)
     if lead_id:
         query = query.eq("lead_id", lead_id)
+    if training_partner_id:
+        query = query.eq("training_partner_id", training_partner_id)
+    if fractional_leader_id:
+        query = query.eq("fractional_leader_id", fractional_leader_id)
+    if channel:
+        query = query.eq("channel", channel)
     return query.order("created_at", desc=True).execute()
 
 
@@ -652,3 +673,11 @@ def delete_action_item(client, item_id: str):
 
 def get_lead_details(client, lead_id: str):
     return client.table("leads").select("id, first_name, last_name, org, title").eq("id", lead_id).single().execute()
+
+
+def get_training_partner_details(client, tp_id: str):
+    return client.table("training_partners").select("id, first_name, last_name, organization, title").eq("id", tp_id).single().execute()
+
+
+def get_fractional_leader_details(client, fl_id: str):
+    return client.table("fractional_leaders").select("id, first_name, last_name, domain, title").eq("id", fl_id).single().execute()
