@@ -357,6 +357,16 @@ def delete_document_from_storage(client, storage_path: str):
 def delete_document_record(client, doc_id: str):
     return client.table("documents").delete().eq("id", doc_id).execute()
 
+def get_custom_folders(client):
+    return client.table("document_folders").select("id, name, description, parent_id, is_custom, created_by, created_at").is_("deleted_at", "null").order("created_at", desc=False).execute()
+
+def create_custom_folder(client, folder_data: dict):
+    return client.table("document_folders").insert(folder_data).execute()
+
+def delete_custom_folder(client, folder_id: str):
+    return client.table("document_folders").delete().eq("id", folder_id).execute()
+
+
 
 # =========================================================================
 # FLOWWIES HRMS QUERIES

@@ -190,22 +190,7 @@ function validateFolderName(
 }
 
 export default function DocumentsPage() {
-  const [folders, setFolders] = useState<FolderDef[]>(() => {
-    if (typeof window === 'undefined') return DEFAULT_FOLDERS
-    try {
-      const saved = localStorage.getItem(CUSTOM_FOLDERS_STORAGE_KEY)
-      if (saved) {
-        const parsed: FolderDef[] = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const customOnly = parsed.filter(cf => !DEFAULT_FOLDERS.some(df => df.id === cf.id))
-          return [...DEFAULT_FOLDERS, ...customOnly]
-        }
-      }
-    } catch {
-      // Fallback
-    }
-    return DEFAULT_FOLDERS
-  })
+  const [folders, setFolders] = useState<FolderDef[]>(DEFAULT_FOLDERS)
   const [activeFolder, setActiveFolder] = useState<string | null>(null)
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(false)
@@ -222,6 +207,63 @@ export default function DocumentsPage() {
   const [newFolderDesc, setNewFolderDesc] = useState('')
   const [selectedParentId, setSelectedParentId] = useState<string>('')
   const [folderTouched, setFolderTouched] = useState(false)
+
+  // Load custom folders from backend API or localStorage fallback
+  const fetchFolders = useCallback(async () => {
+    try {
+      const token = await getToken()
+      if (token) {
+        const res = await fetch(`${API_URL}/documents/folders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (res.ok) {
+          const serverFolders = await res.json()
+          if (Array.isArray(serverFolders)) {
+              const loadedFolders: FolderDef[] = serverFolders.map((f: { id: string; name: string; description?: string; parent_id?: string | null; is_custom?: boolean }) => ({
+                id: f.id,
+                name: f.name,
+                description: f.description || '',
+                parentId: f.parent_id || undefined,
+              isCustom: f.is_custom !== undefined ? f.is_custom : !DEFAULT_FOLDERS.some(df => df.id === f.id)
+              }))
+            // Merge with DEFAULT_FOLDERS so defaults are preserved and database folders take priority
+            const merged = [...DEFAULT_FOLDERS]
+            for(const f of loadedFolders) {
+                const existingIdx = merged.findIndex(df => df.id === f.id)
+                if (existingIdx >= 0) {
+                  merged[existingIdx] = { ...merged[existingIdx], ...f }
+                } else {
+                  merged.push(f)
+                }
+              }
+            setFolders(merged)
+            return
+          }
+        }
+        }
+      } catch {
+        // Backend endpoint or DB table may not be ready; fall back to localStorage
+      }
+
+      try {
+        const saved = localStorage.getItem(CUSTOM_FOLDERS_STORAGE_KEY)
+        if (saved) {
+          const parsed: FolderDef[] = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const customOnly = parsed.filter(cf => !DEFAULT_FOLDERS.some(df => df.id === cf.id))
+            if (customOnly.length > 0) {
+              setFolders([...DEFAULT_FOLDERS, ...customOnly])
+            }
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }, [])
+
+  useEffect(() => {
+    fetchFolders()
+  }, [fetchFolders])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -273,7 +315,7 @@ export default function DocumentsPage() {
     if (!activeFolder) return
     const formData = new FormData(e.target as HTMLFormElement)
     const files = formData.getAll('file') as globalThis.File[]
-    
+
     const validFiles = files.filter(f => f && f.size > 0)
     if (validFiles.length === 0) {
       alert('Please select at least one file to upload')
@@ -286,13 +328,13 @@ export default function DocumentsPage() {
       setUploading(false)
       return
     }
-    
+
     try {
       await Promise.all(validFiles.map(async (file) => {
         const fileData = new FormData()
         fileData.append('folder', activeFolder)
         fileData.append('file', file)
-        
+
         const res = await fetch(`${API_URL}/documents/upload`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
@@ -300,7 +342,7 @@ export default function DocumentsPage() {
         })
         if (!res.ok) throw new Error(await res.text())
       }))
-      
+
       setIsUploadModalOpen(false)
       fetchDocuments(activeFolder)
     } catch (err: unknown) {
@@ -394,7 +436,7 @@ export default function DocumentsPage() {
     selectedParentId || undefined
   )
 
-  const handleCreateFolder = (e: React.FormEvent) => {
+  const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault()
     setFolderTouched(true)
     const val = validateFolderName(newFolderName, folders, selectedParentId || undefined)
@@ -413,14 +455,38 @@ export default function DocumentsPage() {
       isCustom: true
     }
 
+    // Persist to Supabase backend API
+    try {
+      const token = await getToken()
+      if (token) {
+        await fetch(`${API_URL}/documents/folders`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: newFolder.id,
+            name: newFolder.name,
+            description: newFolder.description,
+            parent_id: newFolder.parentId || null
+          })
+        })
+      }
+    } catch (err) {
+      console.error('Failed to save folder to database:', err)
+    }
+
     const nextFolders = [...folders, newFolder]
     setFolders(nextFolders)
 
-    // Save custom folders to localStorage
+    // Save custom folders to localStorage as local cache
     try {
       const saved = localStorage.getItem(CUSTOM_FOLDERS_STORAGE_KEY)
       const customList: FolderDef[] = saved ? JSON.parse(saved) : []
-      localStorage.setItem(CUSTOM_FOLDERS_STORAGE_KEY, JSON.stringify([...customList, newFolder]))
+      if (!customList.some(f => f.id === newFolder.id)) {
+        localStorage.setItem(CUSTOM_FOLDERS_STORAGE_KEY, JSON.stringify([...customList, newFolder]))
+      }
     } catch (err) {
       console.error('Failed to save folder to localStorage:', err)
     }
@@ -431,7 +497,7 @@ export default function DocumentsPage() {
     setFolderTouched(false)
   }
 
-  const handleDeleteFolder = (folderId: string) => {
+  const handleDeleteFolder = async (folderId: string) => {
     const target = folders.find(f => f.id === folderId)
     if (!target) return
     if (!target.isCustom) {
@@ -444,6 +510,19 @@ export default function DocumentsPage() {
     if (hasSubfolders) {
       alert('Cannot delete folder because it contains subfolders. Please delete the subfolders first.')
       return
+    }
+
+    // Delete from Supabase backend API
+    try {
+      const token = await getToken()
+      if (token) {
+        await fetch(`${API_URL}/documents/folders?folder_id=${encodeURIComponent(folderId)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      }
+    } catch (err) {
+      console.error('Failed to delete folder from database:', err)
     }
 
     const nextFolders = folders.filter(f => f.id !== folderId)
@@ -753,13 +832,12 @@ export default function DocumentsPage() {
                 onBlur={() => setFolderTouched(true)}
                 placeholder="e.g. Marketing Materials"
                 autoFocus
-                className={`w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-neutral-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-neutral-500 focus:outline-none transition-colors ${
-                  folderTouched && !currentFolderValidation.isValid
-                    ? 'border-red-500 focus:ring-2 focus:ring-red-400/20 focus:border-red-500'
-                    : folderTouched && newFolderName.trim().length >= 2 && currentFolderValidation.isValid
+                className={`w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-neutral-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-neutral-500 focus:outline-none transition-colors ${folderTouched && !currentFolderValidation.isValid
+                  ? 'border-red-500 focus:ring-2 focus:ring-red-400/20 focus:border-red-500'
+                  : folderTouched && newFolderName.trim().length >= 2 && currentFolderValidation.isValid
                     ? 'border-emerald-500 focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-500'
                     : 'border-gray-300 dark:border-neutral-700 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500'
-                }`}
+                  }`}
               />
             </div>
 
