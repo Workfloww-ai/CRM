@@ -147,7 +147,7 @@ def update_my_profile(body: ProfileSelfUpdate, user=Depends(get_current_user)):
         or user_email.startswith("shilpa")
     )
     if not is_mgr:
-        update_data.pop("phone", None)
+        # Email cannot be edited by employees, but phone can be updated for WhatsApp check-in
         update_data.pop("email", None)
 
     # Clean empty strings for date or uuid fields

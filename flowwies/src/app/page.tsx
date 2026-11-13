@@ -38,6 +38,12 @@ import {
   Building,
   CreditCard,
   Pencil,
+  MapPin,
+  Navigation,
+  Radio,
+  Smartphone,
+  Download,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Profile {
@@ -225,8 +231,27 @@ export default function FlowwiesApp() {
   const [isChangingPwd, setIsChangingPwd] = useState(false);
   const [changePwdError, setChangePwdError] = useState("");
 
-  // Active view tab: 'home' | 'reimbursements' | 'profile' | 'access'
-  const [activeTab, setActiveTab] = useState<"home" | "reimbursements" | "profile" | "access">("home");
+  // Active view tab: 'home' | 'reimbursements' | 'attendance' | 'profile' | 'access'
+  const [activeTab, setActiveTab] = useState<"home" | "reimbursements" | "attendance" | "profile" | "access">("home");
+
+  // Attendance Module States
+  const [attendanceToday, setAttendanceToday] = useState<any>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [attendanceActionLoading, setAttendanceActionLoading] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locatingError, setLocatingError] = useState<string>("");
+  const [attendanceSubTab, setAttendanceSubTab] = useState<"punch" | "history" | "team" | "report" | "sites">("punch");
+
+  // Manager Attendance States
+  const [teamAttendanceToday, setTeamAttendanceToday] = useState<any>(null);
+  const [teamAttendanceLoading, setTeamAttendanceLoading] = useState(false);
+  const [attendanceReportMonth, setAttendanceReportMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [attendanceReport, setAttendanceReport] = useState<any>(null);
+  const [attendanceReportLoading, setAttendanceReportLoading] = useState(false);
+  const [attendanceSites, setAttendanceSites] = useState<any[]>([]);
+  const [editingSite, setEditingSite] = useState<any>(null);
+  const [isUpdatingSite, setIsUpdatingSite] = useState(false);
 
   // People & Access Management States
   const [showAddPersonModal, setShowAddPersonModal] = useState(false);
@@ -729,6 +754,206 @@ export default function FlowwiesApp() {
 
     // 11. Insurance (from public.insurance_cover)
     loadInsurance(jwt, currentUserId);
+
+    // 12. Attendance (Today, History, Sites)
+    loadAttendanceData(jwt, currentProfile);
+  };
+
+  const loadAttendanceData = (jwt: string, currentProfile?: Profile) => {
+    const headers = { Authorization: `Bearer ${jwt}` };
+    setAttendanceLoading(true);
+    fetch(`${API_URL}/hrms/attendance/today`, { headers })
+      .then((r) => r.json())
+      .then((d) => setAttendanceToday(d))
+      .catch(console.error)
+      .finally(() => setAttendanceLoading(false));
+
+    fetch(`${API_URL}/hrms/attendance/my-history`, { headers })
+      .then((r) => r.json())
+      .then((d) => setAttendanceHistory(Array.isArray(d) ? d : []))
+      .catch(console.error);
+
+    fetch(`${API_URL}/hrms/attendance/sites`, { headers })
+      .then((r) => r.json())
+      .then((d) => setAttendanceSites(Array.isArray(d) ? d : []))
+      .catch(console.error);
+
+    const isMgr = (currentProfile?.is_manager || profile?.is_manager);
+    if (isMgr) {
+      loadTeamAttendance(jwt);
+    }
+  };
+
+  const loadTeamAttendance = (jwt: string) => {
+    setTeamAttendanceLoading(true);
+    fetch(`${API_URL}/hrms/attendance/team`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setTeamAttendanceToday(d))
+      .catch(console.error)
+      .finally(() => setTeamAttendanceLoading(false));
+  };
+
+  const loadAttendanceReport = (jwt: string, month: string) => {
+    setAttendanceReportLoading(true);
+    fetch(`${API_URL}/hrms/attendance/report?month=${month}`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setAttendanceReport(d))
+      .catch(console.error)
+      .finally(() => setAttendanceReportLoading(false));
+  };
+
+  const handleCheckInAction = async () => {
+    const token = session?.access_token;
+    if (!token) {
+      showNotification("Please log in to mark attendance.");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      showNotification("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    setAttendanceActionLoading(true);
+    setLocatingError("");
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setCurrentCoords({ lat, lng });
+
+        try {
+          const res = await fetch(`${API_URL}/hrms/attendance/check-in`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              latitude: lat,
+              longitude: lng,
+              source: "web",
+            }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            showNotification(data.detail || "Check-in failed.");
+            return;
+          }
+
+          if (data.within_geofence) {
+            showNotification(`✅ Checked in at ${data.site_name || "Alt.F Coworking"}! Inside office geo-fence.`);
+          } else {
+            showNotification(`⚠️ Checked in, but location is outside ${data.site_name || "Alt.F Coworking"} radius.`);
+          }
+
+          loadAttendanceData(token, profile || undefined);
+        } catch (err: any) {
+          showNotification(err?.message || "Failed to mark check-in.");
+        } finally {
+          setAttendanceActionLoading(false);
+        }
+      },
+      (geoErr) => {
+        setAttendanceActionLoading(false);
+        const errMsg = geoErr.message || "Location permission denied. Please allow GPS to check in.";
+        setLocatingError(errMsg);
+        showNotification(`Location error: ${errMsg}`);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
+  const handleCheckOutAction = async () => {
+    const token = session?.access_token;
+    if (!token) {
+      showNotification("Please log in to mark attendance.");
+      return;
+    }
+
+    setAttendanceActionLoading(true);
+
+    const performCheckOut = async (lat?: number, lng?: number) => {
+      try {
+        const res = await fetch(`${API_URL}/hrms/attendance/check-out`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            latitude: lat || null,
+            longitude: lng || null,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          showNotification(data.detail || "Check-out failed.");
+          return;
+        }
+
+        const hrs = data.work_hours ? ` (${data.work_hours} hrs)` : "";
+        showNotification(`👋 Checked out successfully!${hrs} Have a good evening!`);
+        loadAttendanceData(token, profile || undefined);
+      } catch (err: any) {
+        showNotification(err?.message || "Failed to mark check-out.");
+      } finally {
+        setAttendanceActionLoading(false);
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => performCheckOut(pos.coords.latitude, pos.coords.longitude),
+        () => performCheckOut(),
+        { timeout: 8000 }
+      );
+    } else {
+      performCheckOut();
+    }
+  };
+
+  const handleUpdateSiteAction = async (siteId: string, form: any) => {
+    const token = session?.access_token;
+    if (!token) return;
+
+    setIsUpdatingSite(true);
+    try {
+      const res = await fetch(`${API_URL}/hrms/attendance/sites/${siteId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showNotification(err.detail || "Failed to update site.");
+        return;
+      }
+      showNotification("✅ Office site geo-fence coordinates updated successfully!");
+      setEditingSite(null);
+      loadAttendanceData(token, profile || undefined);
+    } catch (e: any) {
+      showNotification(e?.message || "Update failed.");
+    } finally {
+      setIsUpdatingSite(false);
+    }
+  };
+
+  const handleExportAttendanceCsv = () => {
+    const token = session?.access_token;
+    if (!token) return;
+    const url = `${API_URL}/hrms/attendance/export?month=${attendanceReportMonth}`;
+    window.open(url, "_blank");
   };
 
   const loadPayslips = (jwt: string, targetUserId: string) => {
@@ -1480,11 +1705,10 @@ export default function FlowwiesApp() {
                     key={d}
                     type="button"
                     onClick={() => setPeopleDeptFilter(d)}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
-                      peopleDeptFilter === d
+                    className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${peopleDeptFilter === d
                         ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
                         : "text-[var(--muted)] hover:text-[var(--ink)]"
-                    }`}
+                      }`}
                   >
                     {d === "all" ? "All" : d}
                   </button>
@@ -1499,11 +1723,10 @@ export default function FlowwiesApp() {
                     key={r}
                     type="button"
                     onClick={() => setPeopleRoleFilter(r)}
-                    className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all capitalize ${
-                      peopleRoleFilter === r
+                    className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all capitalize ${peopleRoleFilter === r
                         ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
                         : "text-[var(--muted)] hover:text-[var(--ink)]"
-                    }`}
+                      }`}
                   >
                     {r}
                   </button>
@@ -1543,9 +1766,8 @@ export default function FlowwiesApp() {
                   return (
                     <tr
                       key={m.id}
-                      className={`border-b border-[var(--line)] hover:bg-[var(--vs)] transition-all ${
-                        m.is_active === false ? "opacity-60 bg-gray-50/50" : ""
-                      }`}
+                      className={`border-b border-[var(--line)] hover:bg-[var(--vs)] transition-all ${m.is_active === false ? "opacity-60 bg-gray-50/50" : ""
+                        }`}
                     >
                       <td className="py-3 px-3">
                         <button
@@ -1598,13 +1820,12 @@ export default function FlowwiesApp() {
                                   const finalDepts = next.length > 0 ? next : ["Tech"];
                                   handleUpdateMemberAdmin(m.id, { departments: finalDepts });
                                 }}
-                                className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
-                                  hasDept
+                                className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${hasDept
                                     ? dName === "Growth"
                                       ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
                                       : "bg-[var(--bt)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
                                     : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
-                                }`}
+                                  }`}
                               >
                                 {hasDept ? `✓ ${dName}` : `+ ${dName}`}
                               </button>
@@ -1617,11 +1838,10 @@ export default function FlowwiesApp() {
                         <button
                           type="button"
                           onClick={() => handleUpdateMemberAdmin(m.id, { can_access_crm: !m.can_access_crm })}
-                          className={`flow-tag text-xs cursor-pointer transition-all ${
-                            m.can_access_crm
+                          className={`flow-tag text-xs cursor-pointer transition-all ${m.can_access_crm
                               ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
                               : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
-                          }`}
+                            }`}
                         >
                           {m.can_access_crm ? "CRM On ↗" : "CRM Off ✕"}
                         </button>
@@ -1652,11 +1872,10 @@ export default function FlowwiesApp() {
                         <button
                           type="button"
                           onClick={() => handleUpdateMemberAdmin(m.id, { is_active: m.is_active === false ? true : false })}
-                          className={`flow-btn sm text-xs ${
-                            m.is_active === false
+                          className={`flow-btn sm text-xs ${m.is_active === false
                               ? "bg-[var(--vt2)] border-[var(--ink)] text-[var(--ink)]"
                               : "bg-white text-[var(--muted)] hover:text-red-600"
-                          }`}
+                            }`}
                         >
                           {m.is_active === false ? "Resume" : "Pause"}
                         </button>
@@ -1903,6 +2122,819 @@ export default function FlowwiesApp() {
     return cells;
   }, [calMonth, calYear, calendarLeaves, calHolidays]);
 
+  // ATTENDANCE MODULE RENDER FUNCTION
+  const renderAttendanceView = () => {
+    const todayRec = attendanceToday?.record;
+    const isCheckedIn = Boolean(todayRec?.check_in_at);
+    const isCheckedOut = Boolean(todayRec?.check_out_at);
+    const siteInfo = attendanceSites.length > 0 ? attendanceSites[0] : { name: "Alt.F Coworking", radius_meters: 200, latitude: 28.5034, longitude: 77.4054 };
+
+    return (
+      <div className="space-y-8">
+        {/* Simple Sundar Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-[var(--ink)]">
+              Attendance
+            </h2>
+            <p className="text-[var(--muted)] text-sm mt-1">
+              Mark attendance at <strong>{siteInfo.name}</strong> • Browser GPS & Meta WhatsApp
+            </p>
+          </div>
+
+          {/* Clean Pill Tabs */}
+          <div className="flex items-center gap-1 p-1 bg-[var(--vs)] rounded-2xl border border-[var(--line)]">
+            <button
+              type="button"
+              onClick={() => setAttendanceSubTab("punch")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "punch"
+                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+                }`}
+            >
+              <Radio size={13} className={attendanceSubTab === "punch" ? "text-[var(--v)] animate-pulse" : ""} />
+              Punch
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAttendanceSubTab("history")}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "history"
+                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+                }`}
+            >
+              <Clock size={13} />
+              History
+            </button>
+
+            {profile?.is_manager && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttendanceSubTab("team");
+                    if (session?.access_token) loadTeamAttendance(session.access_token);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "team"
+                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                >
+                  <Users size={13} />
+                  Team
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttendanceSubTab("report");
+                    if (session?.access_token) loadAttendanceReport(session.access_token, attendanceReportMonth);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "report"
+                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                >
+                  <FileText size={13} />
+                  Report
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAttendanceSubTab("sites")}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "sites"
+                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                >
+                  <Building size={13} />
+                  Geo-Fence
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* SUBTAB 1: PUNCH IN / OUT */}
+        {attendanceSubTab === "punch" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column: Quick Punch Card */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="bg-white rounded-3xl border-2 border-[var(--ink)] p-6 md:p-8 shadow-[4px_4px_0_var(--hard)] relative overflow-hidden">
+                {/* Decorative background element */}
+                <div className="absolute top-0 right-0 w-36 h-36 bg-[var(--vt2)] rounded-bl-full -z-0 opacity-40 pointer-events-none" />
+
+                <div className="relative z-10">
+                  {/* Status & Date */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <div>
+                      <span className="text-xs uppercase font-extrabold tracking-wider text-[var(--muted)] block">
+                        Today's Attendance
+                      </span>
+                      <h3 className="text-2xl font-black text-[var(--ink)]">
+                        {new Date().toLocaleDateString("en-IN", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {isCheckedOut ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-900 border border-blue-400 flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Day Completed
+                        </span>
+                      ) : isCheckedIn ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-400 flex items-center gap-1">
+                          <Radio size={13} className="animate-pulse text-emerald-600" /> Checked In
+                        </span>
+                      ) : attendanceToday?.is_on_leave ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-purple-100 text-purple-900 border border-purple-400">
+                          🏖 On Approved Leave
+                        </span>
+                      ) : attendanceToday?.is_holiday ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
+                          🎉 {attendanceToday?.holiday_info?.name || "Holiday"}
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700 border border-gray-300">
+                          ⚪ Not Marked Yet
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Office Site Card */}
+                  <div className="p-4 rounded-2xl bg-[var(--vs)] border border-[var(--line)] mb-6 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white border border-[var(--line2)] flex items-center justify-center text-[var(--v)]">
+                        <Building size={20} />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-sm text-[var(--ink)] flex items-center gap-2">
+                          {siteInfo.name}
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--vt2)] font-bold text-[var(--v)] border border-[var(--ink)]">
+                            Radius: {siteInfo.radius_meters || 200}m
+                          </span>
+                        </div>
+                        <p className="text-xs text-[var(--muted)]">{siteInfo.address || "Alt.F Coworking Office"}</p>
+                      </div>
+                    </div>
+
+                    {todayRec && (
+                      <div className="text-right">
+                        {todayRec.check_in_within_geofence ? (
+                          <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 inline-flex items-center gap-1">
+                            <CheckCircle2 size={12} /> Within Geo-Fence
+                          </span>
+                        ) : (
+                          <span className="text-xs font-extrabold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-300 inline-flex items-center gap-1">
+                            <AlertTriangle size={12} /> Outside Geo-Fence
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Punch In / Out Timing Details */}
+                  {isCheckedIn && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-gradient-to-br from-[var(--vs)] to-white border border-[var(--line)] mb-6">
+                      <div>
+                        <span className="text-[11px] font-bold text-[var(--muted)] block">Check-In Time</span>
+                        <span className="text-base font-extrabold text-[var(--ink)]">
+                          {new Date(todayRec.check_in_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        {todayRec.is_late && (
+                          <span className="text-[10px] font-extrabold text-red-600 block">⚠️ Late Arrival</span>
+                        )}
+                      </div>
+
+                      <div>
+                        <span className="text-[11px] font-bold text-[var(--muted)] block">Check-Out Time</span>
+                        <span className="text-base font-extrabold text-[var(--ink)]">
+                          {todayRec.check_out_at
+                            ? new Date(todayRec.check_out_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                            : "— In progress —"}
+                        </span>
+                      </div>
+
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-[11px] font-bold text-[var(--muted)] block">Work Duration</span>
+                        <span className="text-base font-extrabold text-[var(--v)]">
+                          {todayRec.work_hours ? `${todayRec.work_hours} hrs` : "Tracking..."}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Big Punch Action Buttons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      disabled={isCheckedIn || attendanceActionLoading}
+                      onClick={handleCheckInAction}
+                      className={`flow-btn pri py-4 px-6 rounded-2xl flex items-center justify-center gap-2 text-base font-black transition-all ${isCheckedIn ? "opacity-50 cursor-not-allowed bg-gray-200 border-gray-400 text-gray-500 shadow-none" : ""
+                        }`}
+                    >
+                      {attendanceActionLoading && !isCheckedIn ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <MapPin className="w-5 h-5" />
+                      )}
+                      {isCheckedIn ? "Checked In Already" : "Punch In (Web GPS)"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!isCheckedIn || isCheckedOut || attendanceActionLoading}
+                      onClick={handleCheckOutAction}
+                      className={`flow-btn py-4 px-6 rounded-2xl flex items-center justify-center gap-2 text-base font-black transition-all ${!isCheckedIn || isCheckedOut
+                          ? "opacity-50 cursor-not-allowed bg-gray-100 border-gray-300 text-gray-400 shadow-none"
+                          : "bg-amber-100 hover:bg-amber-200 border-2 border-[var(--ink)] text-[var(--ink)]"
+                        }`}
+                    >
+                      {attendanceActionLoading && isCheckedIn ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <LogOut className="w-5 h-5" />
+                      )}
+                      {isCheckedOut ? "Checked Out" : "Punch Out (End Day)"}
+                    </button>
+                  </div>
+
+                  {locatingError && (
+                    <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-300 text-red-800 text-xs flex items-center gap-2 font-bold">
+                      <AlertCircle size={15} />
+                      {locatingError}
+                    </div>
+                  )}
+
+                  {currentCoords && (
+                    <p className="text-[11px] text-[var(--muted)] mt-4 text-center font-mono">
+                      GPS: {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)} • PostGIS Geofence Active
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: WhatsApp Check-in Banner */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="bg-gradient-to-br from-emerald-50 via-white to-emerald-100/40 rounded-3xl border-2 border-[var(--ink)] p-6 md:p-7 shadow-[4px_4px_0_var(--hard)]">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center border-2 border-[var(--ink)] shadow-[2px_2px_0_var(--hard)]">
+                    <Smartphone size={24} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 border border-[var(--ink)] inline-block">
+                      WhatsApp Connected
+                    </span>
+                    <h3 className="text-xl font-extrabold text-[var(--ink)] mt-0.5">Punch via WhatsApp</h3>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-700 mb-5 leading-relaxed">
+                  Mark your presence on the go without opening the app! Send a message from your registered phone number.
+                </p>
+
+                <div className="space-y-3 mb-6">
+                  <div className="p-3 rounded-xl bg-white border border-emerald-300 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold flex items-center justify-center shrink-0 border border-emerald-300">
+                      1
+                    </span>
+                    <div className="text-xs">
+                      <strong className="text-[var(--ink)] block">Send "IN" + Location</strong>
+                      <span className="text-[var(--muted)]">Tap 📎 / ➕ in WhatsApp and choose <em>"Share Current Location"</em>.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-emerald-300 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold flex items-center justify-center shrink-0 border border-emerald-300">
+                      2
+                    </span>
+                    <div className="text-xs">
+                      <strong className="text-[var(--ink)] block">Automatic PostGIS Verification</strong>
+                      <span className="text-[var(--muted)]">Cloud Run verifies your location within Alt.F Coworking radius.</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white border border-emerald-300 flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold flex items-center justify-center shrink-0 border border-emerald-300">
+                      3
+                    </span>
+                    <div className="text-xs">
+                      <strong className="text-[var(--ink)] block">Send "OUT" to leave</strong>
+                      <span className="text-[var(--muted)]">Marks check-out and computes daily work duration automatically.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-emerald-100/70 border border-emerald-300 text-emerald-950 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-700 shrink-0" />
+                  <span>Your registered mobile: {profile?.phone || "Update in Profile"}</span>
+                </div>
+              </div>
+
+              {/* General Shift Card */}
+              <div className="p-5 rounded-2xl bg-[var(--vs)] border border-[var(--line)] flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-[var(--muted)] block uppercase">Assigned Shift</span>
+                  <span className="font-extrabold text-sm text-[var(--ink)]">General Shift • 09:00 AM – 06:00 PM</span>
+                  <span className="text-[11px] text-[var(--muted)] block mt-0.5">15-minute grace tolerance (09:15 AM)</span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-white border border-[var(--line2)] flex items-center justify-center font-bold text-xs text-[var(--v)]">
+                  9h
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SUBTAB 2: MY HISTORY */}
+        {attendanceSubTab === "history" && (
+          <div className="bg-white rounded-3xl border-2 border-[var(--ink)] p-6 md:p-8 shadow-[4px_4px_0_var(--hard)]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-xl font-extrabold">My Attendance History</h3>
+                <p className="text-xs text-[var(--muted)]">Your punch log recorded from Browser GPS and WhatsApp.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (session?.access_token) loadAttendanceData(session.access_token, profile || undefined);
+                }}
+                className="flow-btn sm text-xs"
+              >
+                <RefreshCw size={13} /> Refresh Log
+              </button>
+            </div>
+
+            {attendanceHistory.length === 0 ? (
+              <div className="text-center py-12 text-[var(--muted)]">
+                <Clock className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-bold">No attendance records found yet.</p>
+                <p className="text-xs">Punch in above to create your first record!</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-[var(--ink)] text-xs text-[var(--muted)] uppercase tracking-wider">
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Check-In</th>
+                      <th className="py-3 px-3">Check-Out</th>
+                      <th className="py-3 px-3">Duration</th>
+                      <th className="py-3 px-3">Geo-Fence</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceHistory.map((rec) => (
+                      <tr key={rec.id} className="border-b border-[var(--line)] hover:bg-[var(--vs)] transition-all">
+                        <td className="py-3 px-3 font-extrabold text-[var(--ink)]">
+                          {new Date(rec.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="py-3 px-3">
+                          {rec.check_in_at ? (
+                            <div>
+                              <span className="font-bold">
+                                {new Date(rec.check_in_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                              {rec.is_late && (
+                                <span className="block text-[10px] text-red-600 font-extrabold">Late</span>
+                              )}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          {rec.check_out_at ? (
+                            <span className="font-bold">
+                              {new Date(rec.check_out_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[var(--muted)] italic">In Progress</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-mono font-bold text-[var(--v)]">
+                          {rec.work_hours ? `${rec.work_hours}h` : "—"}
+                        </td>
+                        <td className="py-3 px-3">
+                          {rec.check_in_within_geofence ? (
+                            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                              <CheckCircle2 size={11} /> Verified
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1">
+                              <AlertTriangle size={11} /> Remote/Outside
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full capitalize ${rec.status === "checked_out"
+                                ? "bg-blue-100 text-blue-900 border border-blue-300"
+                                : "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                              }`}
+                          >
+                            {rec.status.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
+                            {rec.check_in_source || "web"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SUBTAB 3: TEAM TODAY (MANAGER ONLY) */}
+        {attendanceSubTab === "team" && profile?.is_manager && (
+          <div className="space-y-6">
+            {/* Metric counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border-2 border-[var(--ink)] p-4 shadow-[2px_2px_0_var(--hard)]">
+                <span className="text-xs font-bold text-[var(--muted)] block uppercase">Total Team</span>
+                <span className="text-2xl font-black text-[var(--ink)]">
+                  {teamAttendanceToday?.summary?.total_employees || 0}
+                </span>
+              </div>
+              <div className="bg-emerald-50 rounded-2xl border-2 border-emerald-600 p-4 shadow-[2px_2px_0_var(--hard)]">
+                <span className="text-xs font-bold text-emerald-800 block uppercase">Present Today</span>
+                <span className="text-2xl font-black text-emerald-900">
+                  {teamAttendanceToday?.summary?.present || 0}
+                </span>
+              </div>
+              <div className="bg-red-50 rounded-2xl border-2 border-red-600 p-4 shadow-[2px_2px_0_var(--hard)]">
+                <span className="text-xs font-bold text-red-800 block uppercase">Late Arrivals</span>
+                <span className="text-2xl font-black text-red-900">
+                  {teamAttendanceToday?.summary?.late || 0}
+                </span>
+              </div>
+              <div className="bg-purple-50 rounded-2xl border-2 border-purple-600 p-4 shadow-[2px_2px_0_var(--hard)]">
+                <span className="text-xs font-bold text-purple-800 block uppercase">On Leave</span>
+                <span className="text-2xl font-black text-purple-900">
+                  {teamAttendanceToday?.summary?.on_leave || 0}
+                </span>
+              </div>
+            </div>
+
+            {/* Team Table */}
+            <div className="bg-white rounded-3xl border-2 border-[var(--ink)] p-6 md:p-8 shadow-[4px_4px_0_var(--hard)]">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-extrabold">Today's Team Headcount</h3>
+                  <p className="text-xs text-[var(--muted)]">Real-time attendance status across Growth and Tech.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (session?.access_token) loadTeamAttendance(session.access_token);
+                  }}
+                  className="flow-btn sm text-xs"
+                >
+                  <RefreshCw size={13} /> Refresh
+                </button>
+              </div>
+
+              {teamAttendanceLoading ? (
+                <div className="text-center py-12 text-[var(--muted)]">
+                  <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-[var(--v)]" />
+                  <p className="text-xs font-bold">Loading team status...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-[var(--ink)] text-xs text-[var(--muted)] uppercase tracking-wider">
+                        <th className="py-3 px-3">Team Member</th>
+                        <th className="py-3 px-3">Department</th>
+                        <th className="py-3 px-3">Check-In</th>
+                        <th className="py-3 px-3">Check-Out</th>
+                        <th className="py-3 px-3">Hours</th>
+                        <th className="py-3 px-3">Geo-Fence</th>
+                        <th className="py-3 px-3">Today's Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(teamAttendanceToday?.members || []).map((m: any) => {
+                        const rec = m.record;
+                        return (
+                          <tr key={m.employee.id} className="border-b border-[var(--line)] hover:bg-[var(--vs)] transition-all">
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2.5">
+                                <div
+                                  className="w-8 h-8 rounded-full border border-[var(--ink)] flex items-center justify-center font-extrabold text-xs"
+                                  style={{ backgroundColor: m.employee.avatar_color || "#DCD3FF" }}
+                                >
+                                  {getInitials(m.employee.full_name)}
+                                </div>
+                                <div>
+                                  <strong className="block text-[var(--ink)]">{m.employee.full_name}</strong>
+                                  <span className="text-[11px] text-[var(--muted)]">{m.employee.email}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-xs">
+                              {m.employee.department || "Tech"}
+                            </td>
+                            <td className="py-3 px-3 font-bold">
+                              {rec?.check_in_at ? (
+                                <div>
+                                  <span>{new Date(rec.check_in_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                                  {rec.is_late && <span className="block text-[10px] text-red-600 font-extrabold">Late</span>}
+                                </div>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className="py-3 px-3 font-bold">
+                              {rec?.check_out_at ? new Date(rec.check_out_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold text-[var(--v)]">
+                              {rec?.work_hours ? `${rec.work_hours}h` : "—"}
+                            </td>
+                            <td className="py-3 px-3">
+                              {rec?.check_in_within_geofence ? (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  Inside
+                                </span>
+                              ) : rec ? (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                  Outside
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`text-xs font-extrabold px-2.5 py-1 rounded-full capitalize ${m.status === "checked_in" || m.status === "checked_out"
+                                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                    : m.status === "on_leave"
+                                      ? "bg-purple-100 text-purple-900 border border-purple-300"
+                                      : "bg-gray-100 text-gray-700 border border-gray-300"
+                                  }`}
+                              >
+                                {m.status.replace("_", " ")}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SUBTAB 4: MONTHLY REPORT (MANAGER ONLY) */}
+        {attendanceSubTab === "report" && profile?.is_manager && (
+          <div className="bg-white rounded-3xl border-2 border-[var(--ink)] p-6 md:p-8 shadow-[4px_4px_0_var(--hard)]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-xl font-extrabold">Monthly Attendance Summary</h3>
+                <p className="text-xs text-[var(--muted)]">Aggregated attendance, late arrival counts, and average work hours.</p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="month"
+                  value={attendanceReportMonth}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setAttendanceReportMonth(m);
+                    if (session?.access_token) loadAttendanceReport(session.access_token, m);
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-[var(--ink)] font-bold text-xs"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleExportAttendanceCsv}
+                  className="flow-btn sm text-xs flex items-center gap-1.5"
+                >
+                  <Download size={13} /> Export CSV
+                </button>
+              </div>
+            </div>
+
+            {attendanceReportLoading ? (
+              <div className="text-center py-12 text-[var(--muted)]">
+                <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-[var(--v)]" />
+                <p className="text-xs font-bold">Generating monthly report...</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-[var(--ink)] text-xs text-[var(--muted)] uppercase tracking-wider">
+                      <th className="py-3 px-3">Employee</th>
+                      <th className="py-3 px-3">Dept</th>
+                      <th className="py-3 px-3">Present Days</th>
+                      <th className="py-3 px-3">Late Days</th>
+                      <th className="py-3 px-3">Leaves Taken</th>
+                      <th className="py-3 px-3">Total Hours</th>
+                      <th className="py-3 px-3">Avg Hours/Day</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(attendanceReport?.employees || []).map((emp: any) => (
+                      <tr key={emp.user_id} className="border-b border-[var(--line)] hover:bg-[var(--vs)] transition-all">
+                        <td className="py-3 px-3">
+                          <strong className="block text-[var(--ink)]">{emp.full_name}</strong>
+                          <span className="text-[11px] text-[var(--muted)]">{emp.email}</span>
+                        </td>
+                        <td className="py-3 px-3 text-xs font-semibold">{emp.department}</td>
+                        <td className="py-3 px-3 font-bold text-emerald-800">{emp.present_days}</td>
+                        <td className="py-3 px-3 font-bold text-red-600">{emp.late_days}</td>
+                        <td className="py-3 px-3 font-bold text-purple-700">{emp.leave_days}</td>
+                        <td className="py-3 px-3 font-mono font-bold">{emp.total_hours}h</td>
+                        <td className="py-3 px-3 font-mono font-bold text-[var(--v)]">{emp.avg_daily_hours}h</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SUBTAB 5: OFFICE GEO-FENCE SITES (MANAGER ONLY) */}
+        {attendanceSubTab === "sites" && profile?.is_manager && (
+          <div className="bg-white rounded-3xl border-2 border-[var(--ink)] p-6 md:p-8 shadow-[4px_4px_0_var(--hard)]">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-extrabold">Office Site & Geo-Fence Settings</h3>
+                <p className="text-xs text-[var(--muted)]">Configure official coordinates and radius used for PostGIS boundary validation.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {attendanceSites.map((site) => (
+                <div key={site.id} className="p-6 rounded-2xl bg-[var(--vs)] border-2 border-[var(--ink)] shadow-[2px_2px_0_var(--hard)]">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[var(--vt2)] border border-[var(--ink)] flex items-center justify-center text-[var(--v)] font-bold">
+                        <Building size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-lg text-[var(--ink)]">{site.name}</h4>
+                        <span className="text-xs text-[var(--muted)]">{site.address}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setEditingSite(site)}
+                      className="flow-btn sm text-xs flex items-center gap-1"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs p-3 rounded-xl bg-white border border-[var(--line)] mb-4 font-mono">
+                    <div>
+                      <span className="text-[10px] text-[var(--muted)] font-bold block uppercase">Latitude</span>
+                      <span className="font-extrabold text-[var(--ink)]">{site.latitude}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[var(--muted)] font-bold block uppercase">Longitude</span>
+                      <span className="font-extrabold text-[var(--ink)]">{site.longitude}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[10px] text-[var(--muted)] font-bold block uppercase">Fence Radius</span>
+                      <span className="font-extrabold text-[var(--v)]">{site.radius_meters} meters</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-800">
+                    <CheckCircle2 size={14} /> Active for Attendance Verification
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Edit Modal */}
+            {editingSite && (
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl border-2 border-[var(--ink)] max-w-lg w-full p-6 shadow-[6px_6px_0_var(--hard)]">
+                  <h3 className="text-xl font-extrabold mb-1">Edit {editingSite.name} Coordinates</h3>
+                  <p className="text-xs text-[var(--muted)] mb-5">
+                    Update the GPS latitude, longitude, and radius for PostGIS geo-fencing.
+                  </p>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleUpdateSiteAction(editingSite.id, {
+                        name: editingSite.name,
+                        address: editingSite.address,
+                        latitude: parseFloat(editingSite.latitude),
+                        longitude: parseFloat(editingSite.longitude),
+                        radius_meters: parseInt(editingSite.radius_meters, 10),
+                      });
+                    }}
+                    className="space-y-4 text-xs font-bold"
+                  >
+                    <div>
+                      <label className="block mb-1 text-[var(--muted)] uppercase tracking-wider">Site Name</label>
+                      <input
+                        type="text"
+                        value={editingSite.name}
+                        onChange={(e) => setEditingSite({ ...editingSite, name: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--ink)] font-bold text-sm"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-[var(--muted)] uppercase tracking-wider">Address</label>
+                      <input
+                        type="text"
+                        value={editingSite.address || ""}
+                        onChange={(e) => setEditingSite({ ...editingSite, address: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--ink)] font-bold text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block mb-1 text-[var(--muted)] uppercase tracking-wider">Latitude</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editingSite.latitude}
+                          onChange={(e) => setEditingSite({ ...editingSite, latitude: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-[var(--ink)] font-bold text-sm font-mono"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1 text-[var(--muted)] uppercase tracking-wider">Longitude</label>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editingSite.longitude}
+                          onChange={(e) => setEditingSite({ ...editingSite, longitude: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-[var(--ink)] font-bold text-sm font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-[var(--muted)] uppercase tracking-wider">Radius (Meters)</label>
+                      <input
+                        type="number"
+                        value={editingSite.radius_meters}
+                        onChange={(e) => setEditingSite({ ...editingSite, radius_meters: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--ink)] font-bold text-sm"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingSite(null)}
+                        className="flow-btn sm text-xs"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isUpdatingSite}
+                        className="flow-btn pri sm text-xs"
+                      >
+                        {isUpdatingSite ? "Saving..." : "Save Geo-Fence"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] font-sans">
@@ -1932,7 +2964,7 @@ export default function FlowwiesApp() {
                 But when.
               </span>
             </h1>
-        
+
           </div>
 
           <div className="flow-card">
@@ -1997,20 +3029,20 @@ export default function FlowwiesApp() {
     <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)]">
       {/* 1. TOP NAVIGATION */}
       <header className="sticky top-0 z-40 bg-[rgba(252,251,255,0.96)] border-b-2 border-[var(--line)] backdrop-blur-md">
-        <div className="wrap flex items-center justify-between h-16">
-          <div className="flex items-center gap-4">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-2 lg:gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setActiveTab("home")}
-              className="text-2xl md:text-3xl font-black tracking-tight flex items-center"
+              className="text-2xl lg:text-3xl font-black tracking-tight flex items-center whitespace-nowrap shrink-0"
             >
               <span className="font-black text-[var(--ink)]">Flow</span>
-              <span className="bg-[var(--vt2)] px-2.5 py-0.5 rounded-xl -rotate-2 inline-block ml-1 font-black text-[var(--v)] border-2 border-[var(--ink)] shadow-[2px_2px_0_var(--hard)]">
+              <span className="bg-[var(--vt2)] px-2 py-0.5 rounded-xl -rotate-2 inline-block ml-1 font-black text-[var(--v)] border-2 border-[var(--ink)] shadow-[2px_2px_0_var(--hard)]">
                 wies
               </span>
             </button>
           </div>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-0.5 lg:gap-1 xl:gap-1.5 shrink-0 whitespace-nowrap">
             <button
               onClick={() => {
                 setActiveTab("home");
@@ -2019,17 +3051,26 @@ export default function FlowwiesApp() {
                   el?.scrollIntoView({ behavior: "smooth" });
                 }, 50);
               }}
-              className="px-3 py-1.5 rounded-full font-bold text-sm hover:bg-[var(--vt)] transition-all"
+              className="px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0"
             >
               Leave
             </button>
             <button
               onClick={() => setActiveTab("reimbursements")}
-              className={`px-3 py-1.5 rounded-full font-bold text-sm hover:bg-[var(--vt)] transition-all ${
-                activeTab === "reimbursements" ? "bg-[var(--vt2)] border border-[var(--ink)]" : ""
-              }`}
+              className={`px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0 ${activeTab === "reimbursements" ? "bg-[var(--vt2)] border border-[var(--ink)]" : ""
+                }`}
             >
               Reimbursements
+            </button>
+            <button
+              onClick={() => setActiveTab("attendance")}
+              className={`px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${activeTab === "attendance"
+                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                  : ""
+                }`}
+            >
+              <MapPin size={13} className={activeTab === "attendance" ? "text-[var(--v)]" : ""} />
+              Attendance
             </button>
             <button
               onClick={() => {
@@ -2039,7 +3080,7 @@ export default function FlowwiesApp() {
                   el?.scrollIntoView({ behavior: "smooth" });
                 }, 50);
               }}
-              className="px-3 py-1.5 rounded-full font-bold text-sm hover:bg-[var(--vt)] transition-all"
+              className="px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0"
             >
               Work Ways
             </button>
@@ -2051,7 +3092,7 @@ export default function FlowwiesApp() {
                   el?.scrollIntoView({ behavior: "smooth" });
                 }, 50);
               }}
-              className="px-3 py-1.5 rounded-full font-bold text-sm hover:bg-[var(--vt)] transition-all"
+              className="px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0"
             >
               Talent
             </button>
@@ -2063,7 +3104,7 @@ export default function FlowwiesApp() {
                   el?.scrollIntoView({ behavior: "smooth" });
                 }, 50);
               }}
-              className="px-3 py-1.5 rounded-full font-bold text-sm hover:bg-[var(--vt)] transition-all"
+              className="px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0"
             >
               Hall of Flex
             </button>
@@ -2075,11 +3116,10 @@ export default function FlowwiesApp() {
                   setActiveTab("access");
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                className={`px-3 py-1.5 rounded-full font-bold text-sm transition-all ${
-                  activeTab === "access"
+                className={`px-2.5 lg:px-3 py-1 rounded-full font-bold text-xs lg:text-[13px] transition-all whitespace-nowrap shrink-0 ${activeTab === "access"
                     ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
                     : "bg-[var(--vs)] border border-[var(--line2)] hover:bg-[var(--vt)]"
-                }`}
+                  }`}
               >
                 People & access
               </button>
@@ -2087,30 +3127,29 @@ export default function FlowwiesApp() {
           </nav>
 
           {/* RIGHT ACTIONS: CRM + PROFILE + SIGN OUT */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 lg:gap-2 shrink-0 whitespace-nowrap">
             {profile.can_access_crm && (
               <a
                 href="https://crm.workfloww.ai"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flow-btn pri sm text-xs"
+                className="flow-btn pri sm text-xs py-1 px-2.5 whitespace-nowrap shrink-0 flex items-center gap-1"
                 title="Growth & Leadership CRM portal"
               >
-                CRM <ExternalLink size={14} />
+                CRM <ExternalLink size={12} />
               </a>
             )}
 
             <button
               onClick={() => setActiveTab("profile")}
-              className={`flex items-center gap-2 border-2 border-[var(--ink)] rounded-full p-1 pr-3 shadow-[2px_2px_0_var(--hard)] transition-all ${
-                activeTab === "profile" ? "bg-[var(--vt2)]" : "bg-white hover:bg-[var(--vt)]"
-              }`}
+              className={`flex items-center gap-1.5 border-2 border-[var(--ink)] rounded-full p-0.5 pr-2.5 shadow-[2px_2px_0_var(--hard)] transition-all whitespace-nowrap shrink-0 ${activeTab === "profile" ? "bg-[var(--vt2)]" : "bg-white hover:bg-[var(--vt)]"
+                }`}
               title="View and edit your profile"
             >
-              <div className="w-8 h-8 rounded-full bg-[var(--vt2)] border border-[var(--ink)] flex items-center justify-center font-extrabold text-xs">
+              <div className="w-6 h-6 rounded-full bg-[var(--vt2)] border border-[var(--ink)] flex items-center justify-center font-extrabold text-[10px] shrink-0">
                 {getInitials(profile.full_name)}
               </div>
-              <span className="font-extrabold text-xs md:text-sm">Profile</span>
+              <span className="font-extrabold text-xs">Profile</span>
             </button>
 
             <button
@@ -2119,10 +3158,11 @@ export default function FlowwiesApp() {
                 setSession(null);
                 setProfile(null);
               }}
-              className="flow-btn sm text-xs"
+              className="flow-btn sm text-xs py-1 px-2.5 whitespace-nowrap shrink-0 flex items-center gap-1"
               title="Sign out of Flowwies"
             >
-              <LogOut size={13} /> Sign out
+              <LogOut size={12} />
+              <span className="whitespace-nowrap">Sign out</span>
             </button>
           </div>
         </div>
@@ -2359,6 +3399,11 @@ export default function FlowwiesApp() {
                 </div>
               </div>
             </div>
+          </div>
+        ) : activeTab === "attendance" ? (
+          /* VIEW 2: ATTENDANCE & GEOFENCING TAB */
+          <div>
+            {renderAttendanceView()}
           </div>
         ) : activeTab === "profile" ? (
           /* VIEW 2: PROFILE TAB */
@@ -3056,11 +4101,9 @@ export default function FlowwiesApp() {
                       {calendarCells.map((cell, idx) => (
                         <div
                           key={idx}
-                          className={`min-h-[85px] p-1.5 border-r border-b border-[var(--line)] text-xs font-bold overflow-hidden ${
-                            idx % 7 === 6 ? "border-r-0" : ""
-                          } ${cell.isWeekend ? "bg-[var(--vs)]" : ""} ${
-                            !cell.isCurrentMonth ? "opacity-35" : ""
-                          }`}
+                          className={`min-h-[85px] p-1.5 border-r border-b border-[var(--line)] text-xs font-bold overflow-hidden ${idx % 7 === 6 ? "border-r-0" : ""
+                            } ${cell.isWeekend ? "bg-[var(--vs)]" : ""} ${!cell.isCurrentMonth ? "opacity-35" : ""
+                            }`}
                         >
                           <span className="inline-block px-1.5 py-0.5 rounded-full">{cell.dayNum}</span>
 
@@ -3100,9 +4143,8 @@ export default function FlowwiesApp() {
                             return (
                               <span
                                 key={li}
-                                className={`block mt-1 text-[10px] rounded px-1.5 py-0.5 truncate border border-[var(--line2)] ${
-                                  l.status === "pending" ? "border-dashed opacity-80" : ""
-                                }`}
+                                className={`block mt-1 text-[10px] rounded px-1.5 py-0.5 truncate border border-[var(--line2)] ${l.status === "pending" ? "border-dashed opacity-80" : ""
+                                  }`}
                                 style={{ background: l.profiles?.avatar_color || "#E6E0FF" }}
                                 title={`${l.profiles?.full_name}: ${l.leave_type} (${l.status})`}
                               >
@@ -3138,7 +4180,7 @@ export default function FlowwiesApp() {
               </div>
 
               {/* Admin Employee Switcher */}
-              {/* {profile.is_admin && (
+            {/* {profile.is_admin && (
                 <div className="flex gap-2 flex-wrap mb-4">
                   {teamMembers.map((m) => (
                     <button
@@ -3155,8 +4197,8 @@ export default function FlowwiesApp() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8"> */}
-                {/* Payslips Card from public.payslips */}
-                {/* <div className="flow-card">
+            {/* Payslips Card from public.payslips */}
+            {/* <div className="flow-card">
                   <h3 className="text-2xl font-bold mb-2">Payslips</h3>
                   <p className="text-xs text-[var(--muted)] mb-4">Net salary deposits &amp; form-16 summaries.</p>
                   
@@ -3184,8 +4226,8 @@ export default function FlowwiesApp() {
                   )}
                 </div> */}
 
-                {/* Insurance GMC Card from public.insurance_cover */}
-                {/* <div className="flow-card bg-[var(--vt)]">
+            {/* Insurance GMC Card from public.insurance_cover */}
+            {/* <div className="flow-card bg-[var(--vt)]">
                   <h3 className="text-2xl font-bold mb-3">Group Health Insurance</h3>
                   {insurance ? (
                     <dl className="grid grid-cols-3 gap-2 text-sm mb-6">
@@ -3711,35 +4753,34 @@ export default function FlowwiesApp() {
                   {[...wall]
                     .sort((a, b) => parseMonthYearSortKey(a?.month_year) - parseMonthYearSortKey(b?.month_year))
                     .map((w, idx) => (
-                    <div
-                      key={w.id || idx}
-                      className={`p-5 rounded-2xl border-2 border-[var(--line2)] shadow-[5px_5px_0_var(--hard)] transition-transform hover:scale-105 relative group ${
-                        idx % 4 === 0 ? "bg-[var(--vt2)] -rotate-2" :
-                        idx % 4 === 1 ? "bg-[var(--bt)] rotate-2" :
-                        idx % 4 === 2 ? "bg-[var(--vt)] -rotate-1" :
-                        "bg-[var(--vs)] rotate-1"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <span className="text-xs font-bold text-[var(--muted)] block">{w.month_year}</span>
-                        {profile.is_manager && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteTalent(w.id, w.profiles?.full_name, w.month_year);
-                            }}
-                            className="p-1 rounded-md bg-white/80 hover:bg-rose-100 text-rose-600 border border-[var(--line2)] shadow-sm opacity-80 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 shrink-0"
-                            title={`Delete ${w.profiles?.full_name || "entry"} from Hall of Flex`}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                      <div
+                        key={w.id || idx}
+                        className={`p-5 rounded-2xl border-2 border-[var(--line2)] shadow-[5px_5px_0_var(--hard)] transition-transform hover:scale-105 relative group ${idx % 4 === 0 ? "bg-[var(--vt2)] -rotate-2" :
+                            idx % 4 === 1 ? "bg-[var(--bt)] rotate-2" :
+                              idx % 4 === 2 ? "bg-[var(--vt)] -rotate-1" :
+                                "bg-[var(--vs)] rotate-1"
+                          }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <span className="text-xs font-bold text-[var(--muted)] block">{w.month_year}</span>
+                          {profile.is_manager && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTalent(w.id, w.profiles?.full_name, w.month_year);
+                              }}
+                              className="p-1 rounded-md bg-white/80 hover:bg-rose-100 text-rose-600 border border-[var(--line2)] shadow-sm opacity-80 group-hover:opacity-100 transition-all hover:scale-110 active:scale-95 shrink-0"
+                              title={`Delete ${w.profiles?.full_name || "entry"} from Hall of Flex`}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                        <h3 className="text-xl font-extrabold pr-2">{w.profiles?.full_name || "Winner"}</h3>
+                        <p className="text-xs font-medium mt-2 leading-relaxed">&ldquo;{w.why_text}&rdquo;</p>
                       </div>
-                      <h3 className="text-xl font-extrabold pr-2">{w.profiles?.full_name || "Winner"}</h3>
-                      <p className="text-xs font-medium mt-2 leading-relaxed">&ldquo;{w.why_text}&rdquo;</p>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </section>
@@ -3764,7 +4805,7 @@ export default function FlowwiesApp() {
       {viewingMember && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="flow-card max-w-2xl w-full bg-white border-2 border-[var(--ink)] shadow-[10px_10px_0_var(--hard)] relative animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col overflow-hidden">
-            
+
             {/* Header */}
             <div className="p-6 border-b-2 border-[var(--line)] bg-[var(--vs)] flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
@@ -3776,11 +4817,10 @@ export default function FlowwiesApp() {
                     <h3 className="text-2xl font-extrabold text-[var(--ink)]">
                       {viewingMember.full_name || "Team Member"}
                     </h3>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                      viewingMember.is_active === false
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${viewingMember.is_active === false
                         ? "bg-gray-100 text-gray-600 border-gray-300"
                         : "bg-emerald-100 text-emerald-800 border-emerald-300"
-                    }`}>
+                      }`}>
                       {viewingMember.is_active === false ? "Paused" : "Active Member"}
                     </span>
                     {isEditingMember && (
@@ -3931,11 +4971,10 @@ export default function FlowwiesApp() {
                                 const next = hasDept ? currentDepts.filter((x: string) => x !== dName) : [...currentDepts, dName];
                                 setMemberEditForm({ ...memberEditForm, departments: next.length > 0 ? next : ["Tech"] });
                               }}
-                              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                                hasDept
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${hasDept
                                   ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
                                   : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
-                              }`}
+                                }`}
                             >
                               {hasDept ? `✓ ${dName}` : `+ ${dName}`}
                             </button>
@@ -3948,11 +4987,10 @@ export default function FlowwiesApp() {
                       <button
                         type="button"
                         onClick={() => setMemberEditForm({ ...memberEditForm, can_access_crm: !memberEditForm.can_access_crm })}
-                        className={`flow-tag text-xs cursor-pointer py-1.5 transition-all w-full text-center ${
-                          memberEditForm.can_access_crm
+                        className={`flow-tag text-xs cursor-pointer py-1.5 transition-all w-full text-center ${memberEditForm.can_access_crm
                             ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
                             : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
-                        }`}
+                          }`}
                       >
                         {memberEditForm.can_access_crm ? "CRM Access Enabled ↗" : "CRM Access Disabled ✕"}
                       </button>
@@ -3962,11 +5000,10 @@ export default function FlowwiesApp() {
                       <button
                         type="button"
                         onClick={() => setMemberEditForm({ ...memberEditForm, is_active: !memberEditForm.is_active })}
-                        className={`flow-btn sm text-xs w-full ${
-                          memberEditForm.is_active
+                        className={`flow-btn sm text-xs w-full ${memberEditForm.is_active
                             ? "bg-emerald-100 border-emerald-400 text-emerald-900"
                             : "bg-gray-200 border-gray-400 text-gray-700"
-                        }`}
+                          }`}
                       >
                         {memberEditForm.is_active ? "✓ Active Member" : "⏸ Paused (Inactive)"}
                       </button>
@@ -4163,7 +5200,7 @@ export default function FlowwiesApp() {
               <>
                 {/* Scrollable Body: View Mode */}
                 <div className="p-6 overflow-y-auto space-y-5 flex-1 text-sm">
-                  
+
                   {/* Badges Overview */}
                   <div className="flex flex-wrap gap-2.5">
                     <div className="px-3 py-1.5 rounded-xl border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] bg-[var(--vt2)] font-bold text-xs flex items-center gap-1.5">
@@ -4174,11 +5211,10 @@ export default function FlowwiesApp() {
                       <Building size={14} />
                       Departments: {((viewingMember.departments && viewingMember.departments.length > 0) ? viewingMember.departments : [viewingMember.department || "Tech"]).join(", ")}
                     </div>
-                    <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
-                      viewingMember.can_access_crm
+                    <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${viewingMember.can_access_crm
                         ? "bg-purple-100 border-purple-400 text-purple-900"
                         : "bg-gray-100 border-gray-300 text-gray-600"
-                    }`}>
+                      }`}>
                       <Sparkles size={14} />
                       CRM Access: {viewingMember.can_access_crm ? "Enabled ↗" : "Disabled ✕"}
                     </div>
@@ -4352,11 +5388,10 @@ export default function FlowwiesApp() {
                                 <span className="font-bold">{l.leave_type || "Leave"}</span> ({l.start_date} to {l.end_date} · {l.days_count} day{l.days_count > 1 ? "s" : ""})
                                 {l.reason && <p className="text-[var(--muted)] text-[11px] mt-0.5">{l.reason}</p>}
                               </div>
-                              <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase border ${
-                                l.status === "approved" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
-                                l.status === "declined" ? "bg-red-100 text-red-800 border-red-300" :
-                                "bg-amber-100 text-amber-800 border-amber-300"
-                              }`}>
+                              <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase border ${l.status === "approved" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
+                                  l.status === "declined" ? "bg-red-100 text-red-800 border-red-300" :
+                                    "bg-amber-100 text-amber-800 border-amber-300"
+                                }`}>
                                 {l.status}
                               </span>
                             </div>
@@ -4501,13 +5536,12 @@ export default function FlowwiesApp() {
                             : [...addPersonForm.departments, dName];
                           setAddPersonForm({ ...addPersonForm, departments: next.length > 0 ? next : [dName] });
                         }}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                          isSelected
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${isSelected
                             ? dName === "Growth"
                               ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
                               : "bg-[var(--bt)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
                             : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
-                        }`}
+                          }`}
                       >
                         {isSelected ? `✓ ${dName}` : `+ ${dName}`}
                       </button>
