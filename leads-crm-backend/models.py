@@ -352,3 +352,11 @@ class AttendanceManualCorrection(BaseModel):
     check_in_at: Optional[str] = None
     check_out_at: Optional[str] = None
     notes: Optional[str] = None
+
+
+class CheckinReminderRequest(BaseModel):
+    user_id: Optional[str] = None
+    phone: Optional[str] = None
+    name: Optional[str] = None
+    date: Optional[str] = None
+

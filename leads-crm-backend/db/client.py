@@ -2,6 +2,9 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, ClientOptions
 
+# Ensure .env is loaded whether run from repo root or leads-crm-backend
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(backend_dir, ".env"))
 load_dotenv()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
