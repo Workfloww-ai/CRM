@@ -52,6 +52,8 @@ def send_whatsapp_message(to_phone: str, message_text: str) -> bool:
         if mobicomm_token:
             headers["Authorization"] = f"Bearer {mobicomm_token}"
             headers["x-api-key"] = mobicomm_token
+            headers["key"] = mobicomm_token
+            headers["apiKey"] = mobicomm_token
         payload = {
             "to": clean_phone,
             "type": "text",
@@ -186,6 +188,8 @@ def send_checkin_reminder_template(
         if mobicomm_token:
             headers["Authorization"] = f"Bearer {mobicomm_token}"
             headers["x-api-key"] = mobicomm_token
+            headers["key"] = mobicomm_token
+            headers["apiKey"] = mobicomm_token
         if WABA_NUMBER:
             clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER)
             if len(clean_waba) == 10:
@@ -316,9 +320,11 @@ def extract_whatsapp_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]
         # -------------------------------------------------------------
         # 2. mobiCOMM / Custom Flat or Semi-Flat Webhook Format
         # -------------------------------------------------------------
-        # In case the payload is nested under "data"
+        # In case the payload is nested under "data", "payload", or "message"
         if isinstance(payload.get("data"), dict):
             return extract_whatsapp_message(payload["data"])
+        if isinstance(payload.get("payload"), dict):
+            return extract_whatsapp_message(payload["payload"])
 
         from_phone = (
             payload.get("from")
@@ -328,7 +334,16 @@ def extract_whatsapp_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]
             or payload.get("sender")
             or payload.get("msisdn")
             or payload.get("from_phone")
+            or payload.get("mobile_number")
+            or payload.get("whatsapp_number")
+            or payload.get("customer_number")
+            or payload.get("number")
+            or payload.get("userPhone")
+            or payload.get("source")
         )
+
+        if not from_phone and isinstance(payload.get("message"), dict):
+            return extract_whatsapp_message(payload["message"])
 
         if not from_phone:
             return None
@@ -353,11 +368,15 @@ def extract_whatsapp_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]
             or payload.get("buttonResponse")
             or payload.get("selectedButtonId")
             or payload.get("action")
+            or payload.get("quick_reply")
         )
         if isinstance(btn, dict):
             extracted_text = btn.get("text") or btn.get("title") or btn.get("payload") or btn.get("id") or extracted_text
         elif isinstance(btn, str):
             extracted_text = btn
+
+        if not extracted_text and isinstance(payload.get("payload"), str):
+            extracted_text = payload.get("payload")
 
         inter = payload.get("interactive")
         if isinstance(inter, dict):
