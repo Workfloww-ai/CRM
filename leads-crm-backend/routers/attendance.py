@@ -597,33 +597,40 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     """
     Processes incoming messages from mobiCOMM or Meta WhatsApp Cloud API.
     Flow:
-      1. Employee clicks "Check In" button -> Bot replies asking them to share live/current GPS location pin.
-      2. Employee shares GPS location pin -> Geofence & shift time verified -> Check-in recorded in attendance_records -> Confirmation sent.
+      1. Employee clicks "Check In" button -> Instantly records attendance in Supabase.
+      2. Employee shares GPS location pin -> Geofence & shift time verified -> Updates attendance_records.
       3. Employee sends "OUT" / "Check Out" -> Check-out recorded -> Work duration calculated -> Confirmation sent.
     """
     body_bytes = await request.body()
     signature = request.headers.get("X-Hub-Signature-256")
+    raw_body_str = body_bytes.decode("utf-8", errors="replace") if body_bytes else ""
+
+    print(f"[WHATSAPP WEBHOOK] Incoming request received! Body: {raw_body_str}", flush=True)
+    logger.info(f"Incoming WhatsApp webhook: {raw_body_str}")
 
     # 1. Verify Signature (if present)
     if signature and not verify_meta_signature(body_bytes, signature):
         logger.warning("Invalid signature received on WhatsApp webhook.")
+        print("[WHATSAPP WEBHOOK] Signature verification failed!", flush=True)
         return Response(content="Invalid signature", status_code=403)
 
     try:
         import json
-        payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+        payload = json.loads(raw_body_str) if raw_body_str else {}
     except Exception as e:
         logger.error(f"Failed to parse WhatsApp JSON payload: {e}")
+        print(f"[WHATSAPP WEBHOOK ERROR] JSON parse error: {e}", flush=True)
         return Response(content="Bad JSON", status_code=400)
 
     # 2. Extract sender, message, and location (handles both Meta and mobiCOMM payloads)
     msg_info = extract_whatsapp_message(payload)
     if not msg_info:
-        # Acknowledge receipt immediately (prevents retry loops for status deliveries)
+        print(f"[WHATSAPP WEBHOOK] extract_whatsapp_message returned None for payload: {payload}", flush=True)
         return {"status": "received"}
 
     from_phone = msg_info.get("from_phone")
     if not from_phone:
+        print("[WHATSAPP WEBHOOK] Ignored event with no sender phone.", flush=True)
         return {"status": "ignored_no_sender"}
 
     normalized_sender_phone = normalize_phone(from_phone)
@@ -631,6 +638,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     lat = msg_info.get("latitude")
     lng = msg_info.get("longitude")
 
+    print(f"[WHATSAPP WEBHOOK] Sender: {from_phone} (norm: {normalized_sender_phone}) | text: '{text_content}' | coords: ({lat}, {lng})", flush=True)
     logger.info(f"WhatsApp event from {from_phone} ({normalized_sender_phone}): text='{text_content}' lat={lat} lng={lng}")
 
     # Use admin service client for webhook operations (or user client if auth header passed in local testing)
@@ -643,10 +651,17 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
     if not admin_client:
         logger.error("No Supabase client available for WhatsApp webhook handler.")
+        print("[WHATSAPP WEBHOOK ERROR] admin_client is completely unavailable (missing SUPABASE_URL / keys)", flush=True)
         return {"status": "db_client_unavailable"}
 
     # 3. Find matching employee by phone number in profiles
-    all_profiles = admin_client.table("profiles").select("id, full_name, email, phone, emergency_contact_phone").execute().data or []
+    try:
+        all_profiles = admin_client.table("profiles").select("id, full_name, email, phone, emergency_contact_phone").execute().data or []
+    except Exception as db_err:
+        print(f"[WHATSAPP WEBHOOK ERROR] Failed to fetch profiles from Supabase: {db_err}", flush=True)
+        all_profiles = []
+
+    print(f"[WHATSAPP WEBHOOK] Found {len(all_profiles)} employee profiles in Supabase.", flush=True)
     logger.info(f"Looking up phone '{normalized_sender_phone}' across {len(all_profiles)} employee profiles in DB.")
 
     matched_user = None
@@ -659,11 +674,15 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
     # Secondary direct lookup if full scan didn't match
     if not matched_user:
-        direct = admin_client.table("profiles").select("id, full_name, email, phone").ilike("phone", f"%{normalized_sender_phone}%").execute().data or []
-        if direct:
-            matched_user = direct[0]
+        try:
+            direct = admin_client.table("profiles").select("id, full_name, email, phone").ilike("phone", f"%{normalized_sender_phone}%").execute().data or []
+            if direct:
+                matched_user = direct[0]
+        except Exception:
+            pass
 
     if not matched_user:
+        print(f"[WHATSAPP WEBHOOK WARNING] Sender phone '{normalized_sender_phone}' not found in any profile!", flush=True)
         send_whatsapp_message(
             from_phone,
             "⚠️ Hi! Your phone number is not registered in Flowwies HRMS.\n"
@@ -676,6 +695,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     today_str = get_ist_today_str()
     ist_now = get_ist_now()
     time_str = ist_now.strftime("%I:%M %p")
+    print(f"[WHATSAPP WEBHOOK] Matched user: {emp_name} (ID: {user_id})", flush=True)
 
     # 4. Handle "OUT" or "CHECKOUT" (only when coordinates are not sent)
     is_checkout = (
@@ -839,13 +859,18 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             "is_late": late_flag,
         }
 
-        if existing:
-            ins_res = admin_client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
-        else:
-            ins_res = admin_client.table("attendance_records").insert(rec_payload).execute()
-
-        saved_record = ins_res.data[0] if (ins_res and ins_res.data) else rec_payload
-        logger.info(f"Attendance recorded via WhatsApp for user {user_id} ({emp_name}) at {ist_now.isoformat()}")
+        try:
+            if existing:
+                ins_res = admin_client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
+            else:
+                ins_res = admin_client.table("attendance_records").insert(rec_payload).execute()
+            saved_record = ins_res.data[0] if (ins_res and ins_res.data) else rec_payload
+            print(f"[WHATSAPP WEBHOOK] Successfully saved attendance record to Supabase: {saved_record}", flush=True)
+            logger.info(f"Attendance recorded via WhatsApp for user {user_id} ({emp_name}) at {ist_now.isoformat()}")
+        except Exception as ins_err:
+            print(f"[WHATSAPP WEBHOOK ERROR] FAILED to save to attendance_records table: {ins_err}", flush=True)
+            logger.error(f"FAILED to save to attendance_records table: {ins_err}", exc_info=True)
+            saved_record = rec_payload
 
         late_msg = " (Marked Late)" if late_flag else ""
         confirmation_msg = (
