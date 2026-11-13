@@ -789,7 +789,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         send_whatsapp_message(from_phone, reply)
         return {"status": "check_in_recorded", "within_geofence": within_geofence}
 
-    # 6. Handle "Check In" button tap or text check-in prompt -> Prompt for GPS pin
+    # 6. Handle "Check In" button tap or text check-in prompt -> Record Attendance Immediately in Supabase!
     is_checkin_prompt = (
         text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN")
         or "CHECK IN" in text_content
@@ -797,16 +797,71 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         or "CHECK-IN" in text_content
     )
     if is_checkin_prompt:
-        send_whatsapp_message(
-            from_phone,
-            f"👋 Hi {emp_name}!\n\n"
-            f"To record your attendance at Alt.F Coworking, please share your GPS pin:\n"
-            f"1️⃣ Tap the attachment (📎 or ➕) icon in WhatsApp\n"
-            f"2️⃣ Select *Location*\n"
-            f"3️⃣ Choose *'Send Your Current Location'*\n\n"
-            f"Your attendance and geo-fence will be verified automatically! 📍"
+        site = ensure_default_site(admin_client)
+        site_id = site.get("id") if site else None
+        site_name = site.get("name", "Office") if site else "Office"
+
+        shift = get_default_shift(admin_client)
+        late_flag = is_checkin_late(shift, ist_now)
+
+        # Check if already checked in today
+        existing = admin_client.table("attendance_records") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("date", today_str) \
+            .execute().data
+
+        if existing and existing[0].get("check_in_at"):
+            prev_in_time = existing[0].get("check_in_at")
+            try:
+                prev_dt = datetime.fromisoformat(prev_in_time.replace("Z", "+00:00")).astimezone(IST)
+                prev_time_str = prev_dt.strftime("%I:%M %p")
+            except Exception:
+                prev_time_str = prev_in_time
+
+            send_whatsapp_message(
+                from_phone,
+                f"ℹ️ Hi {emp_name}, your attendance was already recorded today at {prev_time_str}.\n"
+                f"Status: Checked In ✅\n\n"
+                f"Reply 'OUT' when leaving to record your check-out."
+            )
+            return {"status": "already_checked_in", "user_id": user_id, "check_in_at": prev_in_time}
+
+        # Store check-in record in Supabase
+        rec_payload = {
+            "user_id": user_id,
+            "site_id": site_id,
+            "shift_id": shift.get("id") if shift else None,
+            "check_in_at": ist_now.isoformat(),
+            "check_in_source": "whatsapp",
+            "date": today_str,
+            "status": "checked_in",
+            "is_late": late_flag,
+        }
+
+        if existing:
+            ins_res = admin_client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
+        else:
+            ins_res = admin_client.table("attendance_records").insert(rec_payload).execute()
+
+        saved_record = ins_res.data[0] if (ins_res and ins_res.data) else rec_payload
+        logger.info(f"Attendance recorded via WhatsApp for user {user_id} ({emp_name}) at {ist_now.isoformat()}")
+
+        late_msg = " (Marked Late)" if late_flag else ""
+        confirmation_msg = (
+            f"✅ Hi {emp_name}!\n"
+            f"Your attendance has been marked successfully at {time_str}{late_msg}.\n"
+            f"Date: {today_str}\n\n"
+            f"Have a productive day at work! 🌟\n"
+            f"Reply 'OUT' when leaving to end your shift."
         )
-        return {"status": "prompted_for_location"}
+        send_whatsapp_message(from_phone, confirmation_msg)
+        return {
+            "status": "check_in_recorded",
+            "user_id": user_id,
+            "check_in_at": ist_now.isoformat(),
+            "record": saved_record,
+        }
 
     # 7. Default help message
     send_whatsapp_message(
