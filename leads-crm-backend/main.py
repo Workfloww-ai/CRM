@@ -6,6 +6,7 @@ from db.queries import (
     get_leads_page,
     create_lead as db_create_lead,
     create_activity,
+    delete_activity,
     update_lead as db_update_lead,
     get_lead_status,
     delete_lead as db_delete_lead,
@@ -25,12 +26,18 @@ from db.queries import (
 )
 from pydantic import BaseModel
 from models import (
-    LeadCreate, LeadUpdate, NoteCreate,
+    LeadCreate, LeadUpdate, NoteCreate, ActionItemUpdate,
     InvestorCreate, InvestorUpdate,
     FractionalLeaderCreate, FractionalLeaderUpdate,
     TrainingPartnerCreate, TrainingPartnerUpdate,
     CompetitorCreate, CompetitorUpdate
 )
+from db.queries import (
+    create_action_item, get_action_items, update_action_item, delete_action_item,
+    get_lead_details, get_training_partner_details, get_fractional_leader_details,
+    delete_fractional_leader_activity, delete_training_partner_activity
+)
+from services.insight_analyzer import analyze_insight_for_action_item
 from auth.permissions import require_admin, require_super_admin, require_crm_access
 from auth.dependencies import get_current_user
 from routers.hrms import router as hrms_router
@@ -289,12 +296,114 @@ def get_lead_activities(request: Request, lead_id: str, user=Depends(get_current
 @limiter.limit("60/minute")
 def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
-    create_activity(client, {
+    activity_data = {
         "lead_id": lead_id,
         "user_id": user.id,
         "type": "note",
         "content": note.content,
-    })
+    }
+    if note.metadata:
+        activity_data["metadata"] = note.metadata
+    act_res = create_activity(client, activity_data)
+
+    # Automatically analyze insight using AI to extract action items
+    created_action_item = None
+    try:
+        lead_res = get_lead_details(client, lead_id)
+        lead_data = lead_res.data if lead_res and hasattr(lead_res, 'data') else {}
+        lead_name = f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip()
+        org = lead_data.get('org', '')
+
+        analysis = analyze_insight_for_action_item(
+            insight_text=note.content,
+            lead_name=lead_name,
+            org=org
+        )
+        if analysis.get("has_action_item") and analysis.get("task"):
+            activity_id = None
+            if act_res and hasattr(act_res, 'data') and act_res.data:
+                activity_id = act_res.data[0].get("id")
+            action_res = create_action_item(client, {
+                "lead_id": lead_id,
+                "user_id": user.id,
+                "activity_id": activity_id,
+                "task": analysis["task"],
+                "due_date": analysis.get("due_date"),
+                "status": "pending",
+                "channel": "direct_channel",
+                "source_insight": note.content
+            })
+            if action_res and hasattr(action_res, 'data') and action_res.data:
+                created_action_item = action_res.data[0]
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in automatic action item extraction: {e}")
+
+    return {
+        "status": "ok",
+        "action_item_created": created_action_item is not None,
+        "action_item": created_action_item
+    }
+
+@app.delete("/leads/{lead_id}/activities/{activity_id}")
+@limiter.limit("60/minute")
+def delete_lead_activity(request: Request, lead_id: str, activity_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = delete_activity(client, activity_id)
+    if not res.data:
+        raise HTTPException(
+            status_code=403,
+            detail="Database blocked deletion. Please run migration 014_add_delete_activity_policy.sql in Supabase SQL editor or add SUPABASE_SERVICE_ROLE_KEY to backend .env."
+        )
+    return {"status": "ok"}
+
+@app.get("/action-items")
+@limiter.limit("60/minute")
+def list_action_items(
+    request: Request,
+    status: Optional[str] = None,
+    my_tasks_only: Optional[bool] = False,
+    lead_id: Optional[str] = None,
+    training_partner_id: Optional[str] = None,
+    fractional_leader_id: Optional[str] = None,
+    channel: Optional[str] = None,
+    user=Depends(get_current_user)
+):
+    client = get_client_for_user(user.token)
+    user_filter = user.id if my_tasks_only else None
+    response = get_action_items(
+        client,
+        user_id=user_filter,
+        status=status,
+        lead_id=lead_id,
+        training_partner_id=training_partner_id,
+        fractional_leader_id=fractional_leader_id,
+        channel=channel
+    )
+    return response.data
+
+@app.patch("/action-items/{item_id}")
+@limiter.limit("60/minute")
+def update_action_item_endpoint(
+    request: Request,
+    item_id: str,
+    body: ActionItemUpdate,
+    user=Depends(get_current_user)
+):
+    client = get_client_for_user(user.token)
+    update_data = body.model_dump(exclude_unset=True)
+    response = update_action_item(client, item_id, update_data)
+    return response.data
+
+@app.delete("/action-items/{item_id}")
+@limiter.limit("60/minute")
+def delete_action_item_endpoint(
+    request: Request,
+    item_id: str,
+    user=Depends(get_current_user)
+):
+    client = get_client_for_user(user.token)
+    delete_action_item(client, item_id)
     return {"status": "ok"}
 
 @app.get("/leads/export")
@@ -1289,13 +1398,67 @@ def get_fl_activities(request: Request, leader_id: str, user=Depends(get_current
 @limiter.limit("20/minute")
 def add_fl_note(request: Request, leader_id: str, data: dict, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
+    content = data.get("content", "")
+    metadata = data.get("metadata")
     activity = {
         "leader_id": leader_id,
         "user_id": user.id,
         "type": "note",
-        "content": data.get("content", "")
+        "content": content
     }
-    create_fractional_leader_activity(client, activity)
+    if metadata:
+        activity["metadata"] = metadata
+    act_res = create_fractional_leader_activity(client, activity)
+
+    # Automatically analyze insight using AI to extract action items
+    created_action_item = None
+    try:
+        fl_res = get_fractional_leader_details(client, leader_id)
+        fl_data = fl_res.data if fl_res and hasattr(fl_res, 'data') else {}
+        fl_name = f"{fl_data.get('first_name', '')} {fl_data.get('last_name', '')}".strip()
+        org = fl_data.get('domain', '') or ''
+
+        analysis = analyze_insight_for_action_item(
+            insight_text=content,
+            lead_name=fl_name,
+            org=org
+        )
+        if analysis.get("has_action_item") and analysis.get("task"):
+            activity_id = None
+            if act_res and hasattr(act_res, 'data') and act_res.data:
+                activity_id = act_res.data[0].get("id")
+            action_res = create_action_item(client, {
+                "fractional_leader_id": leader_id,
+                "user_id": user.id,
+                "activity_id": activity_id,
+                "task": analysis["task"],
+                "due_date": analysis.get("due_date"),
+                "status": "pending",
+                "channel": "fractional_leader",
+                "source_insight": content
+            })
+            if action_res and hasattr(action_res, 'data') and action_res.data:
+                created_action_item = action_res.data[0]
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in automatic FL action item extraction: {e}")
+
+    return {
+        "status": "ok",
+        "action_item_created": created_action_item is not None,
+        "action_item": created_action_item
+    }
+
+@app.delete("/fractional-leaders/{leader_id}/activities/{activity_id}")
+@limiter.limit("60/minute")
+def delete_fl_activity_endpoint(request: Request, leader_id: str, activity_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = delete_fractional_leader_activity(client, activity_id)
+    if not res.data:
+        raise HTTPException(
+            status_code=403,
+            detail="Database blocked deletion. Please verify delete policy or add SUPABASE_SERVICE_ROLE_KEY to backend .env."
+        )
     return {"status": "ok"}
 
 @app.get("/fractional-leaders/{leader_id}/attachments")
@@ -1343,9 +1506,67 @@ def get_tp_acts(request: Request, training_partner_id: str, user=Depends(get_cur
 @limiter.limit("20/minute")
 def add_tp_note(request: Request, training_partner_id: str, data: dict, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
-    create_training_partner_activity(client, {
-        "training_partner_id": training_partner_id, "user_id": user.id, "type": "note", "content": data.get("content", "")
-    })
+    content = data.get("content", "")
+    metadata = data.get("metadata")
+    activity = {
+        "training_partner_id": training_partner_id,
+        "user_id": user.id,
+        "type": "note",
+        "content": content
+    }
+    if metadata:
+        activity["metadata"] = metadata
+    act_res = create_training_partner_activity(client, activity)
+
+    # Automatically analyze insight using AI to extract action items
+    created_action_item = None
+    try:
+        tp_res = get_training_partner_details(client, training_partner_id)
+        tp_data = tp_res.data if tp_res and hasattr(tp_res, 'data') else {}
+        tp_name = f"{tp_data.get('first_name', '')} {tp_data.get('last_name', '')}".strip()
+        org = tp_data.get('organization', '') or ''
+
+        analysis = analyze_insight_for_action_item(
+            insight_text=content,
+            lead_name=tp_name,
+            org=org
+        )
+        if analysis.get("has_action_item") and analysis.get("task"):
+            activity_id = None
+            if act_res and hasattr(act_res, 'data') and act_res.data:
+                activity_id = act_res.data[0].get("id")
+            action_res = create_action_item(client, {
+                "training_partner_id": training_partner_id,
+                "user_id": user.id,
+                "activity_id": activity_id,
+                "task": analysis["task"],
+                "due_date": analysis.get("due_date"),
+                "status": "pending",
+                "channel": "consulting_partner",
+                "source_insight": content
+            })
+            if action_res and hasattr(action_res, 'data') and action_res.data:
+                created_action_item = action_res.data[0]
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in automatic TP action item extraction: {e}")
+
+    return {
+        "status": "ok",
+        "action_item_created": created_action_item is not None,
+        "action_item": created_action_item
+    }
+
+@app.delete("/training-partners/{training_partner_id}/activities/{activity_id}")
+@limiter.limit("60/minute")
+def delete_tp_activity_endpoint(request: Request, training_partner_id: str, activity_id: str, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    res = delete_training_partner_activity(client, activity_id)
+    if not res.data:
+        raise HTTPException(
+            status_code=403,
+            detail="Database blocked deletion. Please verify delete policy or add SUPABASE_SERVICE_ROLE_KEY to backend .env."
+        )
     return {"status": "ok"}
 
 @app.get("/training-partners/{training_partner_id}/attachments")

@@ -84,6 +84,10 @@ def create_activity(client, activity_data: dict):
     return client.table("lead_activities").insert(activity_data).execute()
 
 
+def delete_activity(client, activity_id: str):
+    return client.table("lead_activities").delete().eq("id", activity_id).execute()
+
+
 def get_lead_activities(client, lead_id: str):
     return client.table("lead_activities").select(f"{ACTIVITY_COLUMNS}, profiles(full_name)").eq("lead_id", lead_id).order("created_at", desc=True).execute()
 
@@ -279,6 +283,9 @@ def get_fractional_leader_activities(client, leader_id: str):
 def create_fractional_leader_activity(client, activity_data: dict):
     return client.table("fractional_leader_activities").insert(activity_data).execute()
 
+def delete_fractional_leader_activity(client, activity_id: str):
+    return client.table("fractional_leader_activities").delete().eq("id", activity_id).execute()
+
 
 def get_investor_activities(client, investor_id: str):
     cols = ACTIVITY_COLUMNS.replace('lead_id', 'investor_id')
@@ -293,6 +300,9 @@ def get_training_partner_activities(client, training_partner_id: str):
 
 def create_training_partner_activity(client, activity_data: dict):
     return client.table("training_partner_activities").insert(activity_data).execute()
+
+def delete_training_partner_activity(client, activity_id: str):
+    return client.table("training_partner_activities").delete().eq("id", activity_id).execute()
 
 # --- Competitors ---
 
@@ -618,3 +628,66 @@ def delete_talent(client, talent_id: str):
     return client.table("talent_of_the_month").delete().eq("id", talent_id).execute()
 
 
+
+
+# Action Items Queries
+def create_action_item(client, action_data: dict):
+    return client.table("action_items").insert(action_data).execute()
+
+
+def get_action_items(
+    client,
+    user_id: str = None,
+    status: str = None,
+    lead_id: str = None,
+    training_partner_id: str = None,
+    fractional_leader_id: str = None,
+    channel: str = None
+):
+    query = client.table("action_items").select(
+        "id, lead_id, training_partner_id, fractional_leader_id, channel, source_insight, user_id, activity_id, task, due_date, status, created_at, completed_at, "
+        "leads(id, first_name, last_name, org, title, status), "
+        "training_partners(id, first_name, last_name, organization, title, status), "
+        "fractional_leaders(id, first_name, last_name, domain, title, status), "
+        "profiles(id, full_name, email)"
+    )
+    if user_id:
+        query = query.eq("user_id", user_id)
+    if status:
+        query = query.eq("status", status)
+    if lead_id:
+        query = query.eq("lead_id", lead_id)
+    if training_partner_id:
+        query = query.eq("training_partner_id", training_partner_id)
+    if fractional_leader_id:
+        query = query.eq("fractional_leader_id", fractional_leader_id)
+    if channel:
+        query = query.eq("channel", channel)
+    return query.order("created_at", desc=True).execute()
+
+
+def update_action_item(client, item_id: str, update_data: dict):
+    from datetime import datetime, timezone
+    clean_data = {k: v for k, v in update_data.items() if v is not None}
+    if "status" in clean_data:
+        if clean_data["status"] == "completed":
+            clean_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+        elif clean_data["status"] == "pending":
+            clean_data["completed_at"] = None
+    return client.table("action_items").update(clean_data).eq("id", item_id).execute()
+
+
+def delete_action_item(client, item_id: str):
+    return client.table("action_items").delete().eq("id", item_id).execute()
+
+
+def get_lead_details(client, lead_id: str):
+    return client.table("leads").select("id, first_name, last_name, org, title").eq("id", lead_id).single().execute()
+
+
+def get_training_partner_details(client, tp_id: str):
+    return client.table("training_partners").select("id, first_name, last_name, organization, title").eq("id", tp_id).single().execute()
+
+
+def get_fractional_leader_details(client, fl_id: str):
+    return client.table("fractional_leaders").select("id, first_name, last_name, domain, title").eq("id", fl_id).single().execute()

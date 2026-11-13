@@ -18,8 +18,9 @@ else:
     supabase_anon = None
 
 def get_admin_client():
-    if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
-        return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or SUPABASE_SERVICE_ROLE_KEY
+    if SUPABASE_URL and key:
+        return create_client(SUPABASE_URL, key)
     return None
 
 def get_client_for_user(token: str):

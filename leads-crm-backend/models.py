@@ -45,6 +45,7 @@ class LeadUpdate(BaseModel):
 
 class NoteCreate(BaseModel):
     content: str
+    metadata: Optional[dict] = None
 
 
 class InvestorCreate(BaseModel):
@@ -360,3 +361,7 @@ class CheckinReminderRequest(BaseModel):
     name: Optional[str] = None
     date: Optional[str] = None
 
+class ActionItemUpdate(BaseModel):
+    status: Optional[str] = None
+    task: Optional[str] = None
+    due_date: Optional[str] = None

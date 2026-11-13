@@ -1,11 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
-import { Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X, FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save, Loader2, Menu, Copy, Check, Mail, CornerUpRight, Globe, ExternalLink } from 'lucide-react'
+import {
+  Search, Plus, Download, Upload, Trash2, History, ChevronLeft, ChevronRight, File, X,
+  FileSpreadsheet, ArrowUpDown, ChevronUp, ChevronDown, Filter, User, Edit2, Save,
+  Loader2, Menu, Copy, Check, Mail, CornerUpRight, Globe, ExternalLink,
+  Mic, MicOff, Sparkles, Lightbulb, Clock
+} from 'lucide-react'
 import { API_URL } from '@/lib/api'
 
 type FractionalLeader = {
@@ -52,6 +57,7 @@ type Activity = {
   type: string
   content: string
   created_at: string
+  metadata?: any
   profiles: { full_name: string } | null
 }
 
@@ -285,6 +291,101 @@ export default function FractionalLeadersPage() {
   const [isSavingContact, setIsSavingContact] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [isPostingComment, setIsPostingComment] = useState(false)
+  const [insightText, setInsightText] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const [isSavingInsight, setIsSavingInsight] = useState(false)
+  const [speechError, setSpeechError] = useState<string | null>(null)
+  const [wasVoiceRecorded, setWasVoiceRecorded] = useState(false)
+  const [actionItemNotice, setActionItemNotice] = useState<string | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const baseTextRef = useRef('')
+
+  const toggleSpeechRecognition = () => {
+    if (typeof window === 'undefined') return
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      setIsListening(false)
+      return
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setSpeechError('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.')
+      setTimeout(() => setSpeechError(null), 6000)
+      return
+    }
+
+    try {
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = navigator.language || 'en-US'
+
+      baseTextRef.current = insightText
+
+      recognition.onstart = () => {
+        setIsListening(true)
+        setSpeechError(null)
+        setWasVoiceRecorded(true)
+      }
+
+      recognition.onresult = (event: any) => {
+        let finalStr = ''
+        let interimStr = ''
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalStr += event.results[i][0].transcript + ' '
+          } else {
+            interimStr += event.results[i][0].transcript
+          }
+        }
+        const fullSpeech = (finalStr + interimStr).trim()
+        const prefix = baseTextRef.current.trim() ? baseTextRef.current.trim() + ' ' : ''
+        setInsightText(prefix + fullSpeech)
+      }
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error)
+        if (event.error === 'not-allowed') {
+          setSpeechError('Microphone permission was denied. Please allow microphone permissions in browser settings.')
+        } else if (event.error === 'no-speech') {
+          // ignore silence
+        } else {
+          setSpeechError(`Speech error: ${event.error}`)
+        }
+        setIsListening(false)
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognitionRef.current = recognition
+      recognition.start()
+    } catch (err: any) {
+      console.error('Failed to start speech recognition:', err)
+      setSpeechError('Could not access microphone. Please check permissions.')
+      setIsListening(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop()
+        } catch (e) {}
+      }
+    }
+  }, [])
   const { isSidebarOpen, setIsSidebarOpen } = useSidebar()
 
   async function getToken() {
@@ -353,6 +454,13 @@ export default function FractionalLeadersPage() {
   }
 
   async function toggleActivities(leaderId: string) {
+    setInsightText('')
+    setActionItemNotice(null)
+    setSpeechError(null)
+    if (isListening && recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch (e) {}
+      setIsListening(false)
+    }
     if (expandedLeaderId === leaderId) {
       setExpandedLeaderId(null)
       return
@@ -594,9 +702,90 @@ export default function FractionalLeadersPage() {
 
     if (res.ok) {
       setLeaders(prev => prev.map(l => l.id === leaderId ? { ...l, ...payload } as FractionalLeader : l))
+      if (insightText.trim()) {
+        await handleAddInsight(leaderId, insightText)
+      }
       fetchLeaders()
     }
     setIsSavingContact(false)
+  }
+
+  async function handleAddInsight(leaderId: string, customText?: string) {
+    const textToSave = (customText !== undefined ? customText : insightText).trim()
+    if (!textToSave) return
+
+    setIsSavingInsight(true)
+    const token = await getToken()
+    if (!token) {
+      setIsSavingInsight(false)
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}/notes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: textToSave,
+          metadata: {
+            category: 'insight',
+            source: wasVoiceRecorded ? 'speech_to_text' : 'manual',
+            saved_at: new Date().toISOString()
+          }
+        }),
+      })
+
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}))
+        if (resData.action_item_created && resData.action_item?.task) {
+          setActionItemNotice(`AI Action Item created: "${resData.action_item.task}" (View in Action Items)`)
+          setTimeout(() => setActionItemNotice(null), 8000)
+        }
+        setInsightText('')
+        setWasVoiceRecorded(false)
+        if (isListening && recognitionRef.current) {
+          try { recognitionRef.current.stop() } catch (e) {}
+          setIsListening(false)
+        }
+        const actsRes = await fetch(`${API_URL}/fractional-leaders/${leaderId}/activities`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (actsRes.ok) {
+          const data = await actsRes.json()
+          setActivities(data)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to save insight:', err)
+    } finally {
+      setIsSavingInsight(false)
+    }
+  }
+
+  async function handleDeleteActivity(leaderId: string, activityId: string) {
+    const confirmed = confirm('Delete this insight? This cannot be undone.')
+    if (!confirmed) return
+
+    const token = await getToken()
+    if (!token) return
+
+    try {
+      const res = await fetch(`${API_URL}/fractional-leaders/${leaderId}/activities/${activityId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setActivities(prev => prev.filter(a => a.id !== activityId))
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        alert(errData.detail || 'Failed to delete insight')
+      }
+    } catch (err) {
+      console.error('Failed to delete activity:', err)
+    }
   }
 
   async function handleAddComment(leaderId: string, e: React.FormEvent) {
@@ -1620,6 +1809,13 @@ Mobile: +91-995882445`;
         onClose={() => {
           setExpandedLeaderId(null)
           setIsEditingContact(false)
+          setInsightText('')
+          setActionItemNotice(null)
+          setSpeechError(null)
+          if (isListening && recognitionRef.current) {
+            try { recognitionRef.current.stop() } catch (e) {}
+            setIsListening(false)
+          }
         }}
         title=""
         maxWidth="max-w-3xl"
@@ -1891,7 +2087,202 @@ Mobile: +91-995882445`;
                     className="w-full px-3 py-2 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg text-sm text-gray-900 dark:text-white focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm resize-y"
                   />
                 </div>
+
+                {/* Insights Section with Speech-to-Text */}
+                <div className="pt-5 border-t border-gray-100 dark:border-neutral-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-widest">
+                      <Sparkles className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                      <span>Call Insights / Discussion Notes</span>
+                    </label>
+
+                    {/* Speech to text mic button and quick actions */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleSpeechRecognition}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+                          isListening
+                            ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse ring-2 ring-red-400 ring-offset-1'
+                            : 'bg-brand-50 hover:bg-brand-100 text-brand-700 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 dark:text-brand-300 border border-brand-200 dark:border-brand-800'
+                        }`}
+                        title={isListening ? 'Click to stop listening' : 'Click to speak and transcribe insights'}
+                      >
+                        {isListening ? (
+                          <>
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                            </span>
+                            <MicOff className="w-3.5 h-3.5" />
+                            <span>Listening... (Stop)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                            <span>Voice to Text</span>
+                          </>
+                        )}
+                      </button>
+
+                      {insightText.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddInsight(expandedLead.id)}
+                          disabled={isSavingInsight}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isSavingInsight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                          <span>Add Insight</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {actionItemNotice && (
+                    <div className="mb-2 p-2.5 bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 rounded-lg text-xs text-brand-800 dark:text-brand-300 flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
+                        <span className="font-medium">{actionItemNotice}</span>
+                      </div>
+                      <button type="button" onClick={() => setActionItemNotice(null)} className="text-brand-500 hover:text-brand-700 ml-2">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Speech status / error alerts */}
+                  {speechError && (
+                    <div className="mb-2 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-center justify-between">
+                      <span>{speechError}</span>
+                      <button type="button" onClick={() => setSpeechError(null)} className="text-red-500 hover:text-red-700">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+
+                  {isListening && (
+                    <div className="mb-2 px-3 py-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </span>
+                      <span className="font-medium">Microphone is active. Speak your call insights clearly and they will be transcribed in real-time...</span>
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <textarea
+                      value={insightText}
+                      onChange={(e) => setInsightText(e.target.value)}
+                      rows={3}
+                      placeholder="Capture key insights from your discussion (e.g. discussed leadership advisory scope, agreed next catchup next Tuesday, compensation structure)..."
+                      className="w-full px-3 py-2.5 bg-gray-50 dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-lg text-sm text-gray-900 dark:text-white focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm resize-y"
+                    />
+                    {insightText && (
+                      <button
+                        type="button"
+                        onClick={() => { setInsightText(''); setWasVoiceRecorded(false); }}
+                        className="absolute right-2.5 bottom-2.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 bg-white/90 dark:bg-neutral-900/90 rounded border border-gray-200 dark:border-neutral-700 backdrop-blur-sm cursor-pointer"
+                        title="Clear insight draft"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
               </form>
+
+              {/* Dedicated Call Insights Section */}
+              <div className="mb-8 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                      <Lightbulb className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        Call Insights & Discussion Log
+                        {activities.filter(a => a.type === 'note').length > 0 && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            {activities.filter(a => a.type === 'note').length}
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Documented takeaways, conversations & meeting notes saved date-wise
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {activities.filter(a => a.type === 'note').length === 0 ? (
+                  <div className="py-8 px-4 text-center border border-dashed border-gray-200 dark:border-neutral-800 rounded-xl bg-gray-50/50 dark:bg-neutral-950/40">
+                    <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center text-gray-400">
+                      <Mic className="w-5 h-5" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No call insights documented yet</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                      Use the mic button or text box above after speaking with {expandedLead.first_name} to document and organize call takeaways date-wise.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activities.filter(a => a.type === 'note').map((insight) => {
+                      const isVoice = insight.metadata?.source === 'speech_to_text'
+                      return (
+                        <div
+                          key={insight.id}
+                          className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-gray-50/70 dark:bg-neutral-950/50 hover:border-amber-300 dark:hover:border-amber-800 transition-all group"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                <User className="w-3 h-3 text-gray-400" />
+                                {formatUserName(insight.profiles?.full_name)}
+                              </span>
+                              <span className="text-gray-300 dark:text-neutral-700">&bull;</span>
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                                <Clock className="w-3 h-3 text-gray-400" />
+                                {new Date(insight.created_at).toLocaleDateString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}{' '}
+                                at{' '}
+                                {new Date(insight.created_at).toLocaleTimeString(undefined, {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                              {isVoice && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-900/40">
+                                  <Mic className="w-2.5 h-2.5" />
+                                  Voice Note
+                                </span>
+                              )}
+                            </div>
+
+                            {profile?.role_level && profile.role_level >= 1 && (
+                              <button
+                                type="button"
+                                onClick={() => expandedLeaderId && handleDeleteActivity(expandedLeaderId, insight.id)}
+                                className="text-gray-400 hover:text-red-600 transition-colors p-1 opacity-0 group-hover:opacity-100 cursor-pointer"
+                                title="Delete insight"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
+                            {insight.content}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="mb-8 p-5 bg-brand-50/50 dark:bg-brand-900/10 border border-brand-100 dark:border-brand-900/30 rounded-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-semibold text-brand-900 dark:text-brand-100 flex items-center gap-2">
@@ -1969,10 +2360,10 @@ Mobile: +91-995882445`;
             )} */}
 
                 <div className="space-y-4">
-                  {activities.length === 0 && (
+                  {activities.filter(a => a.type !== 'note').length === 0 && (
                     <p className="text-sm text-gray-500 italic">No activity yet.</p>
                   )}
-                  {activities.map((a) => (
+                  {activities.filter(a => a.type !== 'note').map((a) => (
                     <div key={a.id} className="relative pl-4 border-l-2 border-gray-200 dark:border-neutral-800 pb-4 last:pb-0 last:border-transparent">
                       <div className="absolute w-2 h-2 bg-brand-500 rounded-full -left-[5px] top-1.5 ring-4 ring-white dark:ring-neutral-900"></div>
                       <p className="text-xs text-gray-500 mb-0.5">
