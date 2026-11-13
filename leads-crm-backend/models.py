@@ -355,6 +355,12 @@ class AttendanceManualCorrection(BaseModel):
     notes: Optional[str] = None
 
 
+class CheckinReminderRequest(BaseModel):
+    user_id: Optional[str] = None
+    phone: Optional[str] = None
+    name: Optional[str] = None
+    date: Optional[str] = None
+
 class ActionItemUpdate(BaseModel):
     status: Optional[str] = None
     task: Optional[str] = None

@@ -18,7 +18,13 @@ from db.queries import (
     get_all_training_partners, get_training_partners_page, create_training_partner, update_training_partner, delete_training_partner,
     get_all_competitors, get_competitors_page, create_competitor, update_competitor, delete_competitor, get_competitor_activities, create_competitor_activity
 )
-from db.queries import upload_file_to_storage, create_attachment_record, get_lead_attachments, get_attachment, get_signed_attachment_url, delete_file_from_storage, delete_attachment_record, upload_document_to_storage, create_document_record, get_documents_by_folder, get_document, get_signed_document_url, delete_document_from_storage, delete_document_record
+from db.queries import (
+    upload_file_to_storage, create_attachment_record, get_lead_attachments, get_attachment, get_signed_attachment_url,
+    delete_file_from_storage, delete_attachment_record, upload_document_to_storage, create_document_record,
+    get_documents_by_folder, get_document, get_signed_document_url, delete_document_from_storage, delete_document_record,
+    get_custom_folders, create_custom_folder, delete_custom_folder
+)
+from pydantic import BaseModel
 from models import (
     LeadCreate, LeadUpdate, NoteCreate, ActionItemUpdate,
     InvestorCreate, InvestorUpdate,
@@ -35,6 +41,11 @@ from services.insight_analyzer import analyze_insight_for_action_item
 from auth.permissions import require_admin, require_super_admin, require_crm_access
 from auth.dependencies import get_current_user
 from routers.hrms import router as hrms_router
+from routers.attendance import (
+    router as attendance_router,
+    handle_whatsapp_webhook_verification,
+    handle_incoming_whatsapp_webhook,
+)
 from fastapi import FastAPI, Header, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -144,6 +155,37 @@ app.add_middleware(
 )
 
 app.include_router(hrms_router)
+app.include_router(attendance_router)
+
+# =============================================================================
+# WHATSAPP INCOMING WEBHOOK CALLBACK ENDPOINTS (mobiCOMM & Meta Cloud API)
+# =============================================================================
+@app.get("/api/whatsapp-webhook")
+def api_whatsapp_webhook_verify(request: Request):
+    """Callback URL verification handshake for mobiCOMM / Meta WhatsApp integration."""
+    return handle_whatsapp_webhook_verification(request)
+
+
+@app.post("/api/whatsapp-webhook")
+async def api_whatsapp_webhook_incoming(request: Request):
+    """
+    Incoming webhook for mobiCOMM WhatsApp events.
+    Receives employee button clicks (e.g. 'Check In') and GPS location coordinates.
+    """
+    return await handle_incoming_whatsapp_webhook(request)
+
+
+@app.get("/whatsapp-webhook")
+def root_whatsapp_webhook_verify(request: Request):
+    """Root alias for WhatsApp webhook handshake."""
+    return handle_whatsapp_webhook_verification(request)
+
+
+@app.post("/whatsapp-webhook")
+async def root_whatsapp_webhook_incoming(request: Request):
+    """Root alias for incoming WhatsApp events."""
+    return await handle_incoming_whatsapp_webhook(request)
+
 
 def sanitize_filename(filename: str) -> str:
     filename = filename.replace("/", "").replace("\\", "")
@@ -1652,6 +1694,41 @@ def get_comp_atts(): return []
 
 @app.post("/competitors/{competitor_id}/attachments")
 def add_comp_atts(): return []
+
+class CreateFolderRequest(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = ""
+    parent_id: Optional[str] = None
+
+@app.get("/documents/folders")
+def get_all_document_folders(user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    try:
+        response = get_custom_folders(client)
+        return response.data or []
+    except Exception:
+        return []
+
+@app.post("/documents/folders")
+def create_document_folder(req: CreateFolderRequest, user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    folder_data = {
+        "id": req.id,
+        "name": req.name,
+        "description": req.description or "",
+        "parent_id": req.parent_id,
+        "is_custom": True,
+        "created_by": user.id
+    }
+    response = create_custom_folder(client, folder_data)
+    return response.data
+
+@app.delete("/documents/folders")
+def delete_document_folder(folder_id: str = Query(...), user=Depends(get_current_user)):
+    client = get_client_for_user(user.token)
+    delete_custom_folder(client, folder_id)
+    return {"status": "ok"}
 
 @app.get("/documents")
 def get_all_documents(folder: str = Query(...), user=Depends(get_current_user)):
