@@ -641,21 +641,19 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     print(f"[WHATSAPP WEBHOOK] Sender: {from_phone} (norm: {normalized_sender_phone}) | text: '{text_content}' | coords: ({lat}, {lng})", flush=True)
     logger.info(f"WhatsApp event from {from_phone} ({normalized_sender_phone}): text='{text_content}' lat={lat} lng={lng}")
 
-    # Use admin service client for webhook operations (or user client if auth header passed in local testing)
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        user_jwt = auth_header.split(" ", 1)[1].strip()
-        admin_client = get_client_for_user(user_jwt)
-    else:
-        admin_client = get_admin_client() or supabase_anon
+    # Use admin service role client for webhook operations (bypasses RLS to match employee phone & record attendance)
+    admin_client = get_admin_client()
+    key_preview = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    print(f"[WHATSAPP WEBHOOK DB] Admin Client Loaded? {bool(admin_client)} (service_key_len: {len(key_preview)})", flush=True)
+
+    if not admin_client:
+        print("[WHATSAPP WEBHOOK WARNING] get_admin_client() returned None! Falling back to anon (queries may be blocked by RLS).", flush=True)
+        admin_client = supabase_anon
 
     if not admin_client:
         logger.error("No Supabase client available for WhatsApp webhook handler.")
         print("[WHATSAPP WEBHOOK ERROR] admin_client is completely unavailable (missing SUPABASE_URL / keys)", flush=True)
         return {"status": "db_client_unavailable"}
-
-    is_service_role = bool(get_admin_client() and admin_client != supabase_anon)
-    print(f"[WHATSAPP WEBHOOK] DB Client Mode: {'SERVICE_ROLE' if is_service_role else 'ANON_KEY (Warning: RLS applies)'}", flush=True)
 
     # 3. Find matching employee by phone number in profiles
     try:

@@ -24,9 +24,11 @@ def get_admin_client():
         or os.environ.get("SERVICE_ROLE_KEY")
         or os.environ.get("SUPABASE_ADMIN_KEY")
         or SUPABASE_SERVICE_ROLE_KEY
-    )
-    if SUPABASE_URL and key:
-        return create_client(SUPABASE_URL, key)
+        or ""
+    ).strip().strip('"').strip("'")
+    url = (os.environ.get("SUPABASE_URL") or SUPABASE_URL or "").strip().strip('"').strip("'")
+    if url and key:
+        return create_client(url, key)
     return None
 
 def get_client_for_user(token: str):
