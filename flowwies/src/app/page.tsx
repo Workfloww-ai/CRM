@@ -3064,13 +3064,16 @@ export default function FlowwiesApp() {
             </button>
             <button
               onClick={() => setActiveTab("attendance")}
-              className={`px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0 flex items-center gap-1 ${activeTab === "attendance"
+              className={`px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 ${activeTab === "attendance"
                   ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
                   : ""
                 }`}
             >
               <MapPin size={13} className={activeTab === "attendance" ? "text-[var(--v)]" : ""} />
-              Attendance
+              <span>Attendance</span>
+              {attendanceToday?.is_checked_in && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Checked in today" />
+              )}
             </button>
             <button
               onClick={() => {
@@ -3818,6 +3821,46 @@ export default function FlowwiesApp() {
                     <small className="font-bold text-sm block mt-2 text-[var(--ink)]">
                       days to {nextHoliday ? nextHoliday.name : "upcoming company holiday"}
                     </small>
+                  </div>
+
+                  {/* Today's Attendance Quick Card */}
+                  <div className="flow-card bg-white dark:bg-[var(--card)] border-[var(--line2)] p-5 flex items-center justify-between shadow-[4px_4px_0_var(--hard)]">
+                    <div>
+                      <div className="text-xs uppercase font-extrabold tracking-wider text-[var(--v)] flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${attendanceToday?.is_checked_in ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`} />
+                        Today&apos;s Attendance
+                      </div>
+                      {attendanceToday?.is_checked_in ? (
+                        <div>
+                          <div className="text-2xl font-black mt-0.5 text-[var(--ink)] flex items-center gap-2">
+                            {attendanceToday.record?.check_in_at
+                              ? new Date(attendanceToday.record.check_in_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                              : "Checked In"}
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              {attendanceToday.record?.check_in_source === "whatsapp" ? "WhatsApp" : "Web"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-[var(--muted)] mt-0.5">
+                            {attendanceToday.is_checked_out
+                              ? `Checked out at ${new Date(attendanceToday.record.check_out_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} (${attendanceToday.record?.work_hours || ""} hrs)`
+                              : "Checked in · Day in progress"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-xl font-black mt-0.5 text-[var(--muted)]">
+                            Not Checked In
+                          </div>
+                          <div className="text-xs text-[var(--muted)] mt-0.5">Mark via WhatsApp or Web</div>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("attendance")}
+                      className="flow-btn sm text-xs"
+                    >
+                      {attendanceToday?.is_checked_in ? "View →" : "Check In →"}
+                    </button>
                   </div>
 
                   <div className="flow-card bg-white dark:bg-[var(--card)] border-[var(--line2)] p-5 flex items-center justify-between shadow-[4px_4px_0_var(--hard)]">
