@@ -13,7 +13,8 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "workfloww_attendance_webhook_token")
 WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
 WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v21.0")
-WABA_NUMBER = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or os.environ.get("WHATSAPP_PHONE_NUMBER", "")
+DEFAULT_WABA_NUMBER = "918448555602"
+WABA_NUMBER = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or os.environ.get("WHATSAPP_PHONE_NUMBER") or DEFAULT_WABA_NUMBER
 
 
 def verify_meta_signature(raw_payload: bytes, signature_header: Optional[str]) -> bool:
@@ -54,18 +55,21 @@ def send_whatsapp_message(to_phone: str, message_text: str) -> bool:
             headers["x-api-key"] = mobicomm_token
             headers["key"] = mobicomm_token
             headers["apiKey"] = mobicomm_token
+        clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER or DEFAULT_WABA_NUMBER)
+        if len(clean_waba) == 10:
+            clean_waba = "91" + clean_waba
+        headers["wabaNumber"] = clean_waba
+        headers["wabanumber"] = clean_waba
+        headers["waba_number"] = clean_waba
+
         payload = {
             "to": clean_phone,
             "type": "text",
             "text": {"body": message_text},
             "message": message_text,
+            "wabaNumber": clean_waba,
+            "from": clean_waba,
         }
-        if WABA_NUMBER:
-            clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER)
-            if len(clean_waba) == 10:
-                clean_waba = "91" + clean_waba
-            payload["wabaNumber"] = clean_waba
-            payload["from"] = clean_waba
         try:
             resp = requests.post(mobicomm_url, json=payload, headers=headers, timeout=10)
             if resp.status_code in (200, 201, 202):
@@ -190,12 +194,14 @@ def send_checkin_reminder_template(
             headers["x-api-key"] = mobicomm_token
             headers["key"] = mobicomm_token
             headers["apiKey"] = mobicomm_token
-        if WABA_NUMBER:
-            clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER)
-            if len(clean_waba) == 10:
-                clean_waba = "91" + clean_waba
-            mobicomm_payload["wabaNumber"] = clean_waba
-            mobicomm_payload["from"] = clean_waba
+        clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER or DEFAULT_WABA_NUMBER)
+        if len(clean_waba) == 10:
+            clean_waba = "91" + clean_waba
+        headers["wabaNumber"] = clean_waba
+        headers["wabanumber"] = clean_waba
+        headers["waba_number"] = clean_waba
+        mobicomm_payload["wabaNumber"] = clean_waba
+        mobicomm_payload["from"] = clean_waba
         try:
             resp = requests.post(mobicomm_url, json=mobicomm_payload, headers=headers, timeout=10)
             if resp.status_code in (200, 201, 202):

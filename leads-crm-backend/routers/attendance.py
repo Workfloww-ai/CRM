@@ -654,6 +654,9 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         print("[WHATSAPP WEBHOOK ERROR] admin_client is completely unavailable (missing SUPABASE_URL / keys)", flush=True)
         return {"status": "db_client_unavailable"}
 
+    is_service_role = bool(get_admin_client() and admin_client != supabase_anon)
+    print(f"[WHATSAPP WEBHOOK] DB Client Mode: {'SERVICE_ROLE' if is_service_role else 'ANON_KEY (Warning: RLS applies)'}", flush=True)
+
     # 3. Find matching employee by phone number in profiles
     try:
         all_profiles = admin_client.table("profiles").select("id, full_name, email, phone, emergency_contact_phone").execute().data or []
