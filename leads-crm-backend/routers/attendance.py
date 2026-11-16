@@ -21,6 +21,7 @@ from models import (
 from services.whatsapp import (
     verify_meta_signature,
     send_whatsapp_message,
+    send_location_request_message,
     send_checkin_reminder_template,
     normalize_phone,
     extract_whatsapp_message,
@@ -874,14 +875,14 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             saved_record = rec_payload
 
         late_msg = " (Marked Late)" if late_flag else ""
-        confirmation_msg = (
-            f"✅ Hi {emp_name}!\n"
-            f"Your attendance has been marked successfully at {time_str}{late_msg}.\n"
-            f"Date: {today_str}\n\n"
-            f"Have a productive day at work! 🌟\n"
-            f"Reply 'OUT' when leaving to end your shift."
+        loc_prompt_text = (
+            f"👋 Hi {emp_name}!\n"
+            f"Please tap the button below to share your current location and complete your check-in at {site_name}."
         )
-        send_whatsapp_message(from_phone, confirmation_msg)
+
+        # Send native WhatsApp Interactive Location Request button (dovesoft / mobiCOMM)
+        send_location_request_message(from_phone, loc_prompt_text)
+
         return {
             "status": "check_in_recorded",
             "user_id": user_id,
