@@ -133,9 +133,15 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    traceback.print_exc()
-    return JSONResponse(status_code=500, content={'detail': str(exc)}, headers={'Access-Control-Allow-Origin': '*'})
+    import logging
+    import uuid
+    error_id = str(uuid.uuid4())[:8]
+    logging.getLogger("app").error(f"Unhandled error [{error_id}]: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred.", "error_id": error_id},
+        headers={'Access-Control-Allow-Origin': '*'}
+    )
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 allowed_origins = [
