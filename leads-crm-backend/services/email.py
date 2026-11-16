@@ -103,7 +103,7 @@ Flowwies Team
     print(f"Subject:   {subject}")
     print(f"Portal:    {app_url}")
     print(f"Username:  {to_email}")
-    print(f"Password:  {default_password}")
+    print(f"Password:  {password}")
     print("Security:  Mandatory password change enforced on first login")
     print("=" * 70)
 
