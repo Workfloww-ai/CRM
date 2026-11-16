@@ -3943,6 +3943,7 @@ export default function FlowwiesApp() {
                           onChange={(e: any) => setApplyType(e.target.value)}
                           className="flow-field"
                         >
+                          <option value="WFH">🏠 Work From Home (WFH)</option>
                           <option value="Monthly">Monthly Leave (2/month entitlement)</option>
                           <option value="Casual">Casual Leave</option>
                           <option value="Sick">Sick Leave</option>
@@ -4183,6 +4184,19 @@ export default function FlowwiesApp() {
                                 </span>
                               );
                             }
+                            if (l.leave_type === "WFH") {
+                              return (
+                                <span
+                                  key={li}
+                                  className={`block mt-1 text-[10px] rounded px-1.5 py-0.5 truncate border border-blue-400 bg-blue-100 text-blue-900 font-extrabold shadow-sm ${
+                                    l.status === "pending" ? "border-dashed opacity-80" : ""
+                                  }`}
+                                  title={`${l.profiles?.full_name}: Work From Home (${l.status})`}
+                                >
+                                  🏠 {getInitials(l.profiles?.full_name)} WFH
+                                </span>
+                              );
+                            }
                             return (
                               <span
                                 key={li}
@@ -4203,6 +4217,9 @@ export default function FlowwiesApp() {
                   <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-[var(--muted)] font-bold">
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded bg-[var(--v)] inline-block"></span> Violet = Company Holiday
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded bg-blue-200 border border-blue-400 inline-block"></span> 🏠 Blue = Work From Home (WFH)
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded bg-pink-200 border border-pink-400 inline-block"></span> 🎂 Pink = Birthday Leave (Auto-granted)
