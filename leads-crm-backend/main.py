@@ -463,6 +463,25 @@ def export_leads(request: Request, export_type: Optional[str] = None, user=Depen
         "status": "status"
     }
 
+def sanitize_csv_cell(value):
+    """
+    Prevents CSV / Formula Injection (CWE-1236 / OWASP).
+    If a string starts with formula-triggering characters (=, +, -, @, \t, \r),
+    prepends a single quote "'" to neutralize spreadsheet formula evaluation.
+    """
+    if value is None:
+        return ""
+    val_str = str(value)
+    if val_str and val_str[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{val_str}"
+    return val_str
+
+
+def sanitize_csv_row(row: dict) -> dict:
+    """Sanitizes all string fields in a dictionary row before CSV export."""
+    return {k: sanitize_csv_cell(v) for k, v in row.items()}
+
+
     output = io.StringIO()
     if export_type:
         types = [t.strip() for t in export_type.split(',')]
@@ -483,17 +502,19 @@ def export_leads(request: Request, export_type: Optional[str] = None, user=Depen
                 }
                 for field in selected_fields:
                     row[field] = lead.get(field, "")
-                writer.writerow(row)
+                writer.writerow(sanitize_csv_row(row))
         else:
             writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
             writer.writeheader()
             for lead in leads:
-                writer.writerow({k: lead.get(k, "") for k in writer.fieldnames})
+                raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
+                writer.writerow(sanitize_csv_row(raw_row))
     else:
         writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
         writer.writeheader()
         for lead in leads:
-            writer.writerow({k: lead.get(k, "") for k in writer.fieldnames})
+            raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
+            writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -895,7 +916,8 @@ def export_investors(request: Request, user=Depends(require_super_admin)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1114,7 +1136,8 @@ def export_fractional_leaders(request: Request, user=Depends(get_current_user)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1330,7 +1353,8 @@ def export_training_partners(request: Request, user=Depends(get_current_user)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1716,7 +1740,8 @@ def export_competitors(request: Request, user=Depends(require_super_admin)):
     writer = csv.DictWriter(output, fieldnames=["id", "name", "website", "status", "created_at"])
     writer.writeheader()
     for row in response.data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
     return Response(
         content=output.getvalue(),
         media_type="text/csv",

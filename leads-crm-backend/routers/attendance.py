@@ -622,20 +622,28 @@ def export_attendance_csv(
         "Check-In Time", "Check-Out Time", "Work Hours", "Is Late", "Within Geo-Fence", "Source"
     ])
 
+    def sanitize_csv_cell(value):
+        if value is None:
+            return ""
+        val_str = str(value)
+        if val_str and val_str[0] in ("=", "+", "-", "@", "\t", "\r"):
+            return f"'{val_str}"
+        return val_str
+
     for r in records:
         prof = r.get("profiles") or {}
         writer.writerow([
-            r.get("date"),
-            prof.get("full_name", ""),
-            prof.get("email", ""),
-            prof.get("emp_code", ""),
-            prof.get("department", ""),
-            r.get("check_in_at") or "-",
-            r.get("check_out_at") or "-",
-            r.get("work_hours") or "-",
+            sanitize_csv_cell(r.get("date")),
+            sanitize_csv_cell(prof.get("full_name", "")),
+            sanitize_csv_cell(prof.get("email", "")),
+            sanitize_csv_cell(prof.get("emp_code", "")),
+            sanitize_csv_cell(prof.get("department", "")),
+            sanitize_csv_cell(r.get("check_in_at") or "-"),
+            sanitize_csv_cell(r.get("check_out_at") or "-"),
+            sanitize_csv_cell(r.get("work_hours") or "-"),
             "Yes" if r.get("is_late") else "No",
             "Yes" if r.get("check_in_within_geofence") else "No",
-            r.get("check_in_source") or "web",
+            sanitize_csv_cell(r.get("check_in_source") or "web"),
         ])
 
     output.seek(0)

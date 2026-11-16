@@ -1,6 +1,21 @@
 
 
 
+import re
+from typing import Optional
+
+
+def sanitize_postgrest_value(value) -> str:
+    """
+    Sanitizes user input for PostgREST filter expressions (.or_() / .ilike).
+    Strips PostgREST control characters (quotes, commas, parentheses, colons, backslashes, percent)
+    to prevent PostgREST filter injection / predicate breakout.
+    """
+    if not value:
+        return ""
+    return re.sub(r'["\',():\\%]', '', str(value)).strip()
+
+
 LEAD_COLUMNS = (
     "id, first_name, last_name, title, org, email, phone, phone_2, "
     "linkedin, website, location, industry, function, revenue, currency, status, "
@@ -27,23 +42,39 @@ def get_leads_page(client, page=1, page_size=20, search=None, name=None, org=Non
     query = query.order("created_at", foreign_table="lead_activities", desc=True).limit(1, foreign_table="lead_activities")
 
     if search:
-        p = f'%{search.replace(chr(34), "")}%'
-        query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",org.ilike."{p}",title.ilike."{p}",location.ilike."{p}",industry.ilike."{p}"')
+        clean = sanitize_postgrest_value(search)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",org.ilike."{p}",title.ilike."{p}",location.ilike."{p}",industry.ilike."{p}"')
     if name:
-        p = f'%{name.replace(chr(34), "")}%'
-        query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}"')
+        clean = sanitize_postgrest_value(name)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}"')
     if org:
-        query = query.ilike("org", f"%{org}%")
+        clean = sanitize_postgrest_value(org)
+        if clean:
+            query = query.ilike("org", f"%{clean}%")
     if title:
-        query = query.ilike("title", f"%{title}%")
+        clean = sanitize_postgrest_value(title)
+        if clean:
+            query = query.ilike("title", f"%{clean}%")
     if location:
-        query = query.ilike("location", f"%{location}%")
+        clean = sanitize_postgrest_value(location)
+        if clean:
+            query = query.ilike("location", f"%{clean}%")
     if industry:
-        query = query.ilike("industry", f"%{industry}%")
+        clean = sanitize_postgrest_value(industry)
+        if clean:
+            query = query.ilike("industry", f"%{clean}%")
     if function:
-        query = query.ilike("function", f"%{function}%")
+        clean = sanitize_postgrest_value(function)
+        if clean:
+            query = query.ilike("function", f"%{clean}%")
     if assignee_id:
-        query = query.eq("next_action_assignee", assignee_id)
+        clean = sanitize_postgrest_value(assignee_id)
+        if clean:
+            query = query.eq("next_action_assignee", clean)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
@@ -170,8 +201,10 @@ def get_investors_page(client, page=1, page_size=20, search=None, sort_by="creat
     query = query.order("created_at", foreign_table="investor_activities", desc=True).limit(1, foreign_table="investor_activities")
 
     if search:
-        p = f'%{search.replace(chr(34), "")}%'
-        query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",company.ilike."{p}"')
+        clean = sanitize_postgrest_value(search)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",company.ilike."{p}"')
 
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
     query = query.range(start, end)
@@ -209,10 +242,14 @@ def get_fractional_leaders_page(client, page=1, page_size=20, search=None, sort_
     query = query.order("created_at", foreign_table="fractional_leader_activities", desc=True).limit(1, foreign_table="fractional_leader_activities")
 
     if search:
-        p = f'%{search.replace(chr(34), "")}%'
-        query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",domain.ilike."{p}"')
+        clean = sanitize_postgrest_value(search)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",domain.ilike."{p}"')
     if assignee_id:
-        query = query.eq("next_action_assignee", assignee_id)
+        clean_aid = sanitize_postgrest_value(assignee_id)
+        if clean_aid:
+            query = query.eq("next_action_assignee", clean_aid)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
@@ -253,10 +290,14 @@ def get_training_partners_page(client, page=1, page_size=20, search=None, sort_b
     query = query.order("created_at", foreign_table="training_partner_activities", desc=True).limit(1, foreign_table="training_partner_activities")
 
     if search:
-        p = f'%{search.replace(chr(34), "")}%'
-        query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",organization.ilike."{p}"')
+        clean = sanitize_postgrest_value(search)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'first_name.ilike."{p}",last_name.ilike."{p}",organization.ilike."{p}"')
     if assignee_id:
-        query = query.eq("next_action_assignee", assignee_id)
+        clean_aid = sanitize_postgrest_value(assignee_id)
+        if clean_aid:
+            query = query.eq("next_action_assignee", clean_aid)
 
     if sort_by == "created_at":
         query = query.order("due_date", desc=False, nullsfirst=False)
@@ -319,8 +360,10 @@ def get_competitors_page(client, page=1, page_size=20, search=None, sort_by="cre
     query = query.order("created_at", foreign_table="competitor_activities", desc=True).limit(1, foreign_table="competitor_activities")
 
     if search:
-        p = f'%{search.replace(chr(34), "")}%'
-        query = query.or_(f'name.ilike."{p}",website.ilike."{p}"')
+        clean = sanitize_postgrest_value(search)
+        if clean:
+            p = f'%{clean}%'
+            query = query.or_(f'name.ilike."{p}",website.ilike."{p}"')
 
     query = query.order(sort_by, desc=sort_desc, nullsfirst=False)
     query = query.range(start, end)

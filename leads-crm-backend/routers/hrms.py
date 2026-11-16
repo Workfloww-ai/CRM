@@ -332,7 +332,11 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         return {"status": "updated", "id": member_id, "message": "Updated existing team member."}
 
     # Create new profile
-    DEFAULT_PASSWORD = "workfloww@2026"
+    DEFAULT_PASSWORD = (
+        os.environ.get("DEFAULT_USER_PASSWORD")
+        or os.environ.get("DEFAULT_EMPLOYEE_PASSWORD")
+        or "workfloww@2026"
+    ).strip()
     from db.client import supabase_anon
     from services.email import send_welcome_credentials_email
 

@@ -1574,19 +1574,6 @@ export default function FlowwiesApp() {
         throw new Error(data.detail || "Failed to add person.");
       }
 
-      // Also ensure user is registered in Supabase Auth with default password
-      try {
-        await supabase.auth.signUp({
-          email: addPersonForm.email.trim().toLowerCase(),
-          password: "workfloww@2026",
-          options: {
-            data: { full_name: addPersonForm.full_name.trim() }
-          }
-        });
-      } catch (authErr) {
-        console.warn("Client auth sign_up notice:", authErr);
-      }
-
       showNotification(data.message || "Team member added successfully!");
       setShowAddPersonModal(false);
       setAddPersonForm({
