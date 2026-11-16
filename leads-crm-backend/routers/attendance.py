@@ -658,31 +658,40 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         return {"status": "db_client_unavailable"}
 
     # 3. Find matching employee by phone number in profiles
-    try:
-        all_profiles = admin_client.table("profiles").select("id, full_name, email, phone, emergency_contact_phone").execute().data or []
-    except Exception as db_err:
-        print(f"[WHATSAPP WEBHOOK ERROR] Failed to fetch profiles from Supabase: {db_err}", flush=True)
-        all_profiles = []
-
-    print(f"[WHATSAPP WEBHOOK] Found {len(all_profiles)} employee profiles in Supabase.", flush=True)
-    logger.info(f"Looking up phone '{normalized_sender_phone}' across {len(all_profiles)} employee profiles in DB.")
-
     matched_user = None
-    for prof in all_profiles:
-        prof_phone = normalize_phone(prof.get("phone", ""))
-        emg_phone = normalize_phone(prof.get("emergency_contact_phone", ""))
-        if (prof_phone and prof_phone == normalized_sender_phone) or (emg_phone and emg_phone == normalized_sender_phone):
-            matched_user = prof
-            break
 
-    # Secondary direct lookup if full scan didn't match
+    # Step 3a: Secure RPC function lookup (bypasses RLS securely via SECURITY DEFINER)
+    try:
+        rpc_res = admin_client.rpc("get_profile_by_phone", {"phone_query": normalized_sender_phone}).execute()
+        if rpc_res.data and len(rpc_res.data) > 0:
+            matched_user = rpc_res.data[0]
+            print(f"[WHATSAPP WEBHOOK] Matched user via secure RPC get_profile_by_phone: {matched_user.get('full_name')} ({matched_user.get('id')})", flush=True)
+    except Exception as rpc_err:
+        print(f"[WHATSAPP WEBHOOK] RPC get_profile_by_phone: {rpc_err}", flush=True)
+
+    # Step 3b: Direct table lookup if RPC returned nothing
     if not matched_user:
         try:
             direct = admin_client.table("profiles").select("id, full_name, email, phone").ilike("phone", f"%{normalized_sender_phone}%").execute().data or []
             if direct:
                 matched_user = direct[0]
-        except Exception:
-            pass
+                print(f"[WHATSAPP WEBHOOK] Matched user via direct query: {matched_user.get('full_name')}", flush=True)
+        except Exception as direct_err:
+            print(f"[WHATSAPP WEBHOOK] Direct query: {direct_err}", flush=True)
+
+    # Step 3c: Fallback full profiles table scan
+    if not matched_user:
+        try:
+            all_profiles = admin_client.table("profiles").select("id, full_name, email, phone, emergency_contact_phone").execute().data or []
+            print(f"[WHATSAPP WEBHOOK] Found {len(all_profiles)} employee profiles in Supabase table scan.", flush=True)
+            for prof in all_profiles:
+                prof_phone = normalize_phone(prof.get("phone", ""))
+                emg_phone = normalize_phone(prof.get("emergency_contact_phone", ""))
+                if (prof_phone and prof_phone == normalized_sender_phone) or (emg_phone and emg_phone == normalized_sender_phone):
+                    matched_user = prof
+                    break
+        except Exception as db_err:
+            print(f"[WHATSAPP WEBHOOK ERROR] Profile scan error: {db_err}", flush=True)
 
     if not matched_user:
         print(f"[WHATSAPP WEBHOOK WARNING] Sender phone '{normalized_sender_phone}' not found in any profile!", flush=True)
