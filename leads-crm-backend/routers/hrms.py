@@ -185,6 +185,32 @@ def get_team(user=Depends(get_current_user)):
         if dname:
             pd_map.setdefault(pid, []).append(dname)
 
+    # Determine caller privileges for DPDP / GDPR data privacy compliance
+    caller_is_manager = False
+    try:
+        caller_prof = client.table("profiles").select("role_level, hrms_role, email").eq("id", user.id).single().execute()
+        if caller_prof and caller_prof.data:
+            cp = caller_prof.data
+            role_level = cp.get("role_level") or 0
+            hrms_role = (cp.get("hrms_role") or "").lower()
+            email = (cp.get("email") or "").lower()
+            if (
+                role_level >= 1
+                or hrms_role in ("manager", "admin")
+                or email.startswith("manish")
+                or email.startswith("shilpa")
+            ):
+                caller_is_manager = True
+    except Exception:
+        caller_is_manager = False
+
+    sensitive_fields = (
+        "bank_account_holder", "bank_name", "bank_account_number",
+        "ifsc_code", "upi_id", "address", "city", "state", "pin_code",
+        "personal_email", "emergency_contact_name", "emergency_contact_phone",
+        "dob", "phone",
+    )
+
     for m in members:
         pid = m["id"]
         depts = pd_map.get(pid, [])
@@ -201,6 +227,11 @@ def get_team(user=Depends(get_current_user)):
         m["role"] = "manager" if is_mgr else "employee"
         m["hrms_role"] = m["role"]
         m["can_access_crm"] = any(d.lower() == "growth" for d in depts) or bool(m.get("can_access_crm")) or is_mgr
+
+        # Redact sensitive financial and personal PII for non-manager callers viewing other members
+        if not caller_is_manager and pid != user.id:
+            for field in sensitive_fields:
+                m[field] = None
 
     return members
 

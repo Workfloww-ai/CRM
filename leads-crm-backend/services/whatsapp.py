@@ -24,19 +24,22 @@ WABA_NUMBER = (
 def verify_meta_signature(raw_payload: bytes, signature_header: Optional[str]) -> bool:
     """
     Verifies that the incoming webhook is genuinely from Meta using SHA256 HMAC.
-    If no signature header is provided (e.g., direct mobiCOMM webhook dispatch),
-    or secret is not configured, passes verification.
+    Returns False if WHATSAPP_APP_SECRET is not configured, signature header is missing,
+    or HMAC signature does not match.
     """
-    if not WHATSAPP_APP_SECRET or not signature_header:
-        return True
+    app_secret = (os.environ.get("WHATSAPP_APP_SECRET") or WHATSAPP_APP_SECRET or "").strip()
+    if not app_secret or not signature_header:
+        logger.warning("WhatsApp webhook signature verification failed: secret or signature header missing.")
+        return False
 
+    sig = signature_header.strip()
     expected = "sha256=" + hmac.new(
-        WHATSAPP_APP_SECRET.encode("utf-8"),
+        app_secret.encode("utf-8"),
         raw_payload,
         hashlib.sha256
     ).hexdigest()
 
-    return hmac.compare_digest(expected, signature_header)
+    return hmac.compare_digest(expected, sig)
 
 
 def send_whatsapp_message(to_phone: str, message_text: str) -> bool:

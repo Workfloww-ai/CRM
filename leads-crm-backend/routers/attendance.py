@@ -30,6 +30,7 @@ from services.whatsapp import (
     normalize_phone,
     extract_whatsapp_message,
     WHATSAPP_VERIFY_TOKEN,
+    WHATSAPP_APP_SECRET,
 )
 
 logger = logging.getLogger("attendance_router")
@@ -815,11 +816,15 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     print(f"[WHATSAPP WEBHOOK] Incoming request received! Body: {raw_body_str}", flush=True)
     logger.info(f"Incoming WhatsApp webhook: {raw_body_str}")
 
-    # 1. Verify Signature (if present)
-    if signature and not verify_meta_signature(body_bytes, signature):
-        logger.warning("Invalid signature received on WhatsApp webhook.")
-        print("[WHATSAPP WEBHOOK] Signature verification failed!", flush=True)
-        return Response(content="Invalid signature", status_code=403)
+    # 1. Verify Signature
+    # If WHATSAPP_APP_SECRET is configured or a signature header is provided,
+    # enforce HMAC-SHA256 signature verification to prevent spoofed webhook calls.
+    app_secret = (os.environ.get("WHATSAPP_APP_SECRET") or WHATSAPP_APP_SECRET or "").strip()
+    if app_secret or signature:
+        if not verify_meta_signature(body_bytes, signature):
+            logger.warning("Invalid or missing signature received on WhatsApp webhook.")
+            print("[WHATSAPP WEBHOOK] Signature verification failed!", flush=True)
+            return Response(content="Invalid signature", status_code=403)
 
     try:
         import json
