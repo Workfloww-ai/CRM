@@ -298,6 +298,26 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
     return {"status": "updated", "data": update_data}
 
 
+def generate_temporary_password(length: int = 12) -> str:
+    """Generates a secure random temporary password for newly provisioned accounts."""
+    import secrets
+    import string
+    chars_lower = string.ascii_lowercase
+    chars_upper = string.ascii_uppercase
+    chars_digits = string.digits
+    chars_special = "!@#$%"
+    all_chars = chars_lower + chars_upper + chars_digits + chars_special
+    pwd = [
+        secrets.choice(chars_lower),
+        secrets.choice(chars_upper),
+        secrets.choice(chars_digits),
+        secrets.choice(chars_special)
+    ]
+    pwd += [secrets.choice(all_chars) for _ in range(length - 4)]
+    secrets.SystemRandom().shuffle(pwd)
+    return "".join(pwd)
+
+
 @router.post("/team")
 def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager)):
     import uuid
@@ -331,12 +351,14 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         client.table("profiles").update(upd).eq("id", member_id).execute()
         return {"status": "updated", "id": member_id, "message": "Updated existing team member."}
 
-    # Create new profile
-    DEFAULT_PASSWORD = (
+    # Generate a random temporary password for newly provisioned user
+    configured_pwd = (
         os.environ.get("DEFAULT_USER_PASSWORD")
         or os.environ.get("DEFAULT_EMPLOYEE_PASSWORD")
-        or "workfloww@2026"
+        or ""
     ).strip()
+    temporary_password = configured_pwd if configured_pwd else generate_temporary_password()
+
     from db.client import supabase_anon
     from services.email import send_welcome_credentials_email
 
@@ -358,7 +380,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             "new_full_name": clean_name,
             "new_role": clean_role,
             "new_department": primary_d,
-            "new_password": DEFAULT_PASSWORD
+            "new_password": temporary_password
         }).execute()
         if rpc_res.data:
             created_id = str(rpc_res.data)
@@ -384,7 +406,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             try:
                 auth_res = supabase_anon.auth.sign_up({
                     "email": clean_email,
-                    "password": DEFAULT_PASSWORD,
+                    "password": temporary_password,
                     "options": {
                         "data": {
                             "full_name": clean_name
@@ -465,7 +487,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         send_welcome_credentials_email(
             to_email=clean_email,
             full_name=clean_name,
-            default_password=DEFAULT_PASSWORD
+            temporary_password=temporary_password
         )
     except Exception as mail_err:
         print("Notice: email sending error:", mail_err)

@@ -2,8 +2,8 @@
 -- 008_set_default_passwords.sql
 -- 
 -- 1. Fixes handle_new_user() trigger with ON CONFLICT (id) DO UPDATE
--- 2. Populates missing profiles into auth.users with password 'workfloww@2026'
--- 3. Sets password to 'workfloww@2026' and auto-confirms all users in auth.users
+-- 2. Populates missing profiles into auth.users with secure temporary credentials
+-- 3. Sets auto-confirmed status and credentials in auth.users
 -- 4. Creates create_team_user() function for future users
 -- =========================================================================
 
@@ -50,7 +50,7 @@ select
   'authenticated',
   'authenticated',
   lower(p.email),
-  extensions.crypt('workfloww@2026', extensions.gen_salt('bf')),
+  extensions.crypt(coalesce(nullif(current_setting('app.initial_default_password', true), ''), encode(extensions.gen_random_bytes(9), 'base64')), extensions.gen_salt('bf')),
   now(),
   '{"provider":"email","providers":["email"]}',
   jsonb_build_object('full_name', p.full_name),
@@ -62,10 +62,10 @@ where not exists (
 )
 on conflict do nothing;
 
--- 4. Update all existing users in auth.users: set password to 'workfloww@2026' & auto-confirm email
+-- 4. Update all existing users in auth.users: ensure credentials & auto-confirm email
 update auth.users
 set 
-  encrypted_password = extensions.crypt('workfloww@2026', extensions.gen_salt('bf')),
+  encrypted_password = extensions.crypt(coalesce(nullif(current_setting('app.initial_default_password', true), ''), encode(extensions.gen_random_bytes(9), 'base64')), extensions.gen_salt('bf')),
   email_confirmed_at = coalesce(email_confirmed_at, now()),
   updated_at = now();
 
@@ -75,7 +75,7 @@ create or replace function public.create_team_user(
   new_full_name text,
   new_role text default 'employee',
   new_department text default 'Tech',
-  new_password text default 'workfloww@2026'
+  new_password text default encode(extensions.gen_random_bytes(9), 'base64')
 )
 returns uuid
 language plpgsql
