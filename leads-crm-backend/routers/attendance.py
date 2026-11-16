@@ -915,11 +915,13 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
     # 4. Handle "OUT" or "CHECKOUT" (only when coordinates are not sent)
     is_checkout = (
-        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT")
+        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "BYE")
         or "CHECK OUT" in text_content
         or "CHECKOUT" in text_content
         or "CHECK-OUT" in text_content
         or "BTN_CHECKOUT" in text_content
+        or text_content.startswith("OUT")
+        or text_content.endswith("OUT")
     )
     if is_checkout and (lat is None or lng is None):
         existing = []
@@ -962,9 +964,15 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         site = ensure_default_site(admin_client)
         site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
 
+        # 1. Send friendly acknowledgment message
+        send_whatsapp_message(
+            from_phone,
+            f"👋 Hi {emp_name}! Wrapping up your shift?"
+        )
+
+        # 2. Immediately send interactive location request button
         prompt_text = (
-            f"👋 Hi {emp_name}!\n\n"
-            f"Please tap the button below to share your current location and complete your check-out at {site_name}."
+            f"Please tap the button below to share your current location and verify your check-out at {site_name}."
         )
         send_location_request_message(from_phone, prompt_text)
         return {"status": "checkout_location_requested"}
