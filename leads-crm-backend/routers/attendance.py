@@ -21,6 +21,7 @@ from models import (
 from services.whatsapp import (
     verify_meta_signature,
     send_whatsapp_message,
+    send_location_request_message,
     send_checkin_reminder_template,
     normalize_phone,
     extract_whatsapp_message,
@@ -641,13 +642,14 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     print(f"[WHATSAPP WEBHOOK] Sender: {from_phone} (norm: {normalized_sender_phone}) | text: '{text_content}' | coords: ({lat}, {lng})", flush=True)
     logger.info(f"WhatsApp event from {from_phone} ({normalized_sender_phone}): text='{text_content}' lat={lat} lng={lng}")
 
-    # Use admin service client for webhook operations (or user client if auth header passed in local testing)
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        user_jwt = auth_header.split(" ", 1)[1].strip()
-        admin_client = get_client_for_user(user_jwt)
-    else:
-        admin_client = get_admin_client() or supabase_anon
+    # Use admin service role client for webhook operations (bypasses RLS to match employee phone & record attendance)
+    admin_client = get_admin_client()
+    key_preview = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    print(f"[WHATSAPP WEBHOOK DB] Admin Client Loaded? {bool(admin_client)} (service_key_len: {len(key_preview)})", flush=True)
+
+    if not admin_client:
+        print("[WHATSAPP WEBHOOK WARNING] get_admin_client() returned None! Falling back to anon (queries may be blocked by RLS).", flush=True)
+        admin_client = supabase_anon
 
     if not admin_client:
         logger.error("No Supabase client available for WhatsApp webhook handler.")
@@ -873,14 +875,14 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             saved_record = rec_payload
 
         late_msg = " (Marked Late)" if late_flag else ""
-        confirmation_msg = (
-            f"✅ Hi {emp_name}!\n"
-            f"Your attendance has been marked successfully at {time_str}{late_msg}.\n"
-            f"Date: {today_str}\n\n"
-            f"Have a productive day at work! 🌟\n"
-            f"Reply 'OUT' when leaving to end your shift."
+        loc_prompt_text = (
+            f"👋 Hi {emp_name}!\n"
+            f"Please tap the button below to share your current location and complete your check-in at {site_name}."
         )
-        send_whatsapp_message(from_phone, confirmation_msg)
+
+        # Send native WhatsApp Interactive Location Request button (dovesoft / mobiCOMM)
+        send_location_request_message(from_phone, loc_prompt_text)
+
         return {
             "status": "check_in_recorded",
             "user_id": user_id,

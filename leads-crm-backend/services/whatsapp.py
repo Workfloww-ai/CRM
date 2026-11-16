@@ -13,7 +13,12 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "workfloww_attendance_webhook_token")
 WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
 WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v21.0")
-WABA_NUMBER = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or os.environ.get("WHATSAPP_PHONE_NUMBER", "")
+WABA_NUMBER = (
+    os.environ.get("WABA_NUMBER")
+    or os.environ.get("MOBICOMM_WABA_NUMBER")
+    or os.environ.get("WHATSAPP_PHONE_NUMBER")
+    or ""
+).strip().strip('"').strip("'")
 
 
 def verify_meta_signature(raw_payload: bytes, signature_header: Optional[str]) -> bool:
@@ -60,12 +65,20 @@ def send_whatsapp_message(to_phone: str, message_text: str) -> bool:
             "text": {"body": message_text},
             "message": message_text,
         }
-        if WABA_NUMBER:
-            clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER)
+
+        waba_val = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or WABA_NUMBER
+        if waba_val:
+            clean_waba = re.sub(r"[^\d]", "", waba_val)
             if len(clean_waba) == 10:
                 clean_waba = "91" + clean_waba
+            headers["wabaNumber"] = clean_waba
+            headers["wabanumber"] = clean_waba
+            headers["waba_number"] = clean_waba
             payload["wabaNumber"] = clean_waba
             payload["from"] = clean_waba
+        else:
+            logger.warning("WABA_NUMBER is not set in environment.")
+
         try:
             resp = requests.post(mobicomm_url, json=payload, headers=headers, timeout=10)
             if resp.status_code in (200, 201, 202):
@@ -103,6 +116,91 @@ def send_whatsapp_message(to_phone: str, message_text: str) -> bool:
     except Exception as e:
         logger.error(f"Error calling WhatsApp API: {e}")
         return False
+
+
+def send_location_request_message(to_phone: str, body_text: Optional[str] = None) -> bool:
+    """
+    Sends an Interactive Location Request Message via mobiCOMM (dovesoft) API or Meta Cloud API.
+    Renders a native 'Send Location' button inside WhatsApp.
+    """
+    clean_phone = re.sub(r"[^\d]", "", to_phone)
+    if len(clean_phone) == 10:
+        clean_phone = "91" + clean_phone
+
+    text = body_text or "Please tap the button below to share your current location and complete your check-in."
+
+    mobicomm_url = os.environ.get("MOBICOMM_API_URL") or "https://api.dovesoft.io/REST/directApi/message"
+    mobicomm_token = os.environ.get("MOBICOMM_AUTH_TOKEN") or os.environ.get("MOBICOMM_API_KEY", "")
+
+    headers = {"Content-Type": "application/json"}
+    if mobicomm_token:
+        headers["Authorization"] = f"Bearer {mobicomm_token}"
+        headers["x-api-key"] = mobicomm_token
+        headers["key"] = mobicomm_token
+        headers["apiKey"] = mobicomm_token
+
+    waba_val = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or WABA_NUMBER
+    if waba_val:
+        clean_waba = re.sub(r"[^\d]", "", waba_val)
+        if len(clean_waba) == 10:
+            clean_waba = "91" + clean_waba
+        headers["wabaNumber"] = clean_waba
+        headers["wabanumber"] = clean_waba
+        headers["waba_number"] = clean_waba
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": clean_phone,
+        "type": "interactive",
+        "interactive": {
+            "type": "location_request_message",
+            "body": {
+                "text": text
+            },
+            "action": {
+                "name": "send_location"
+            }
+        }
+    }
+
+    # 1. Try mobiCOMM (dovesoft)
+    if mobicomm_url:
+        try:
+            resp = requests.post(mobicomm_url, json=payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 201, 202):
+                logger.info(f"Location request message sent successfully to {clean_phone}")
+                return True
+            logger.warning(f"mobiCOMM location request returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling mobiCOMM location request API: {e}")
+
+    # 2. Try Meta Cloud API fallback
+    token = os.environ.get("WHATSAPP_TOKEN", WHATSAPP_TOKEN)
+    phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", WHATSAPP_PHONE_NUMBER_ID)
+    if token and phone_id:
+        url = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{phone_id}/messages"
+        meta_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(url, json=payload, headers=meta_headers, timeout=10)
+            if resp.status_code in (200, 201):
+                return True
+            logger.warning(f"Meta Cloud API location request failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling Meta Cloud API location request: {e}")
+
+    # Fallback to standard text message if interactive message fails
+    fallback_text = (
+        f"{text}\n\n"
+        f"📍 How to share:\n"
+        f"1️⃣ Tap the 📎 (or ➕) attachment icon in WhatsApp\n"
+        f"2️⃣ Select *Location*\n"
+        f"3️⃣ Tap *'Send Your Current Location'*"
+    )
+    return send_whatsapp_message(to_phone, fallback_text)
 
 
 def send_checkin_reminder_template(
@@ -190,12 +288,19 @@ def send_checkin_reminder_template(
             headers["x-api-key"] = mobicomm_token
             headers["key"] = mobicomm_token
             headers["apiKey"] = mobicomm_token
-        if WABA_NUMBER:
-            clean_waba = re.sub(r"[^\d]", "", WABA_NUMBER)
+        waba_val = os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or WABA_NUMBER
+        if waba_val:
+            clean_waba = re.sub(r"[^\d]", "", waba_val)
             if len(clean_waba) == 10:
                 clean_waba = "91" + clean_waba
+            headers["wabaNumber"] = clean_waba
+            headers["wabanumber"] = clean_waba
+            headers["waba_number"] = clean_waba
             mobicomm_payload["wabaNumber"] = clean_waba
             mobicomm_payload["from"] = clean_waba
+        else:
+            logger.warning("WABA_NUMBER is not set in environment.")
+
         try:
             resp = requests.post(mobicomm_url, json=mobicomm_payload, headers=headers, timeout=10)
             if resp.status_code in (200, 201, 202):
