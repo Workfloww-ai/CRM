@@ -273,6 +273,83 @@ def send_checkout_reminder_message(to_phone: str, employee_name: str) -> bool:
     return send_whatsapp_message(to_phone, fallback_text)
 
 
+def send_checkin_prompt_message(to_phone: str, employee_name: str) -> bool:
+    """
+    Sends an automated 9:00 AM check-in prompt to an employee via WhatsApp.
+    Tries native interactive button message first, then pre-approved template, then fallback text.
+    """
+    clean_phone = re.sub(r"[^\d]", "", to_phone)
+    if len(clean_phone) == 10:
+        clean_phone = "91" + clean_phone
+
+    clean_waba = (os.environ.get("WABA_NUMBER") or os.environ.get("MOBICOMM_WABA_NUMBER") or "").strip()
+    mobicomm_token = (os.environ.get("MOBICOMM_API_KEY") or os.environ.get("MOBICOMM_TOKEN") or "").strip()
+    mobicomm_url = (os.environ.get("MOBICOMM_DIRECT_API_URL") or "https://api.dovesoft.io/REST/directApi/message").strip()
+
+    body_text = (
+        f"👋 Good morning {employee_name}!\n\n"
+        f"Please mark your attendance for today. Tap the *Check-In* button below."
+    )
+
+    interactive_payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": clean_phone,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {
+                "text": body_text
+            },
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "btn_checkin",
+                            "title": "Check-In"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "key": mobicomm_token,
+        "wabaNumber": clean_waba,
+        "apiKey": mobicomm_token,
+        "Authorization": f"Bearer {mobicomm_token}" if not mobicomm_token.startswith("Bearer ") else mobicomm_token,
+    }
+
+    if mobicomm_token:
+        try:
+            resp = requests.post(mobicomm_url, json=interactive_payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 201, 202):
+                logger.info(f"Check-in interactive button sent successfully to {clean_phone}")
+                return True
+            logger.warning(f"mobiCOMM interactive check-in button returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error calling mobiCOMM check-in button API: {e}")
+
+    # Fallback to pre-approved template if available
+    try:
+        ok, _ = send_checkin_reminder_template(clean_phone, employee_name)
+        if ok:
+            return True
+    except Exception:
+        pass
+
+    # Fallback to direct text message
+    fallback_text = (
+        f"👋 Good morning {employee_name}!\n\n"
+        f"Please mark your attendance for today.\n"
+        f"Reply *'IN'* or share your current location to check in! 🚀"
+    )
+    return send_whatsapp_message(to_phone, fallback_text)
+
+
 def send_checkin_reminder_template(
     to_phone: str,
     employee_name: str,

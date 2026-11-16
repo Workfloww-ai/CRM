@@ -25,6 +25,7 @@ from services.whatsapp import (
     send_whatsapp_message,
     send_location_request_message,
     send_checkout_reminder_message,
+    send_checkin_prompt_message,
     send_checkin_reminder_template,
     normalize_phone,
     extract_whatsapp_message,
@@ -1065,21 +1066,24 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         late_msg = " (Marked Late)" if late_flag else ""
 
         reply = (
-            f"✅ Good morning {emp_name}!\n"
+            f"✅ Good morning {emp_name}!\n\n"
             f"Attendance marked at {time_str}{late_msg}.\n"
             f"Site: {site_name}\n"
             f"Status: {fence_msg}\n\n"
-            f"Reply 'Check-Out' when leaving to end your shift."
+            f"Reply 'Check-Out' when leaving to end your shift. Have a productive day! 🚀"
         )
         send_whatsapp_message(from_phone, reply)
         return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
 
     # 6. Handle "Check In" button tap or text check-in prompt -> Record Attendance Immediately in Supabase!
     is_checkin_prompt = (
-        text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN")
+        text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN", "GOOD MORNING", "GM", "BTN_CHECKIN")
         or "CHECK IN" in text_content
         or "CHECKIN" in text_content
         or "CHECK-IN" in text_content
+        or "BTN_CHECKIN" in text_content
+        or text_content == "IN"
+        or text_content.startswith("IN ")
     )
     if is_checkin_prompt:
         site = ensure_default_site(admin_client)
@@ -1089,7 +1093,36 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Store check-in record in Supabase immediately
+        # Check if already checked in today
+        existing = admin_client.table("attendance_records") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("date", today_str) \
+            .execute().data
+
+        if existing and existing[0].get("check_in_at"):
+            prev_in_time = existing[0].get("check_in_at")
+            try:
+                prev_dt = datetime.fromisoformat(prev_in_time.replace("Z", "+00:00")).astimezone(IST)
+                prev_time_str = prev_dt.strftime("%I:%M %p")
+            except Exception:
+                prev_time_str = prev_in_time
+
+            send_whatsapp_message(
+                from_phone,
+                f"ℹ️ Hi {emp_name}, your attendance was already recorded today at {prev_time_str}.\n"
+                f"Status: Checked In ✅\n\n"
+                f"Reply 'Check-Out' when leaving to record your check-out."
+            )
+            return {"status": "already_checked_in", "user_id": user_id, "check_in_at": prev_in_time}
+
+        # 1. Send friendly greeting acknowledgment message
+        send_whatsapp_message(
+            from_phone,
+            f"👋 Good morning {emp_name}! Ready to start your work day?"
+        )
+
+        # 2. Store check-in record in Supabase immediately
         saved_record = record_attendance_in_supabase(
             admin_client,
             user_id=user_id,
@@ -1101,12 +1134,10 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             shift_id=shift.get("id") if shift else None,
         )
 
+        # 3. Immediately send native WhatsApp Interactive Location Request button
         loc_prompt_text = (
-            f"👋 Hi {emp_name}!\n"
             f"Please tap the button below to share your current location and complete your check-in at {site_name}."
         )
-
-        # Send native WhatsApp Interactive Location Request button (dovesoft / mobiCOMM)
         send_location_request_message(from_phone, loc_prompt_text)
 
         return {
@@ -1270,5 +1301,58 @@ def cron_checkout_reminder(request: Request):
     """
     admin_client = get_admin_client() or supabase_anon
     return dispatch_daily_checkout_reminders(admin_client)
+
+
+def dispatch_daily_checkin_reminders(client=None) -> dict:
+    """
+    Finds all active employees who haven't checked in yet today,
+    and sends them the 9:00 AM Check-In prompt on WhatsApp.
+    """
+    if not client:
+        client = get_admin_client() or supabase_anon
+
+    today_str = get_ist_today_str()
+    try:
+        active_users = client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+        today_records = client.table("attendance_records").select("user_id").eq("date", today_str).execute().data or []
+        checked_in_ids = {r["user_id"] for r in today_records}
+    except Exception as e:
+        logger.error(f"Error fetching profiles for 9 AM reminder: {e}")
+        return {"status": "error", "error": str(e)}
+
+    sent_count = 0
+    errors = []
+
+    for u in active_users:
+        if u["id"] not in checked_in_ids and u.get("phone"):
+            name = u.get("full_name") or "Team Member"
+            phone = u["phone"]
+            try:
+                ok = send_checkin_prompt_message(phone, name)
+                if ok:
+                    sent_count += 1
+                    logger.info(f"9 AM Check-in reminder sent to {name} ({phone})")
+            except Exception as send_err:
+                errors.append(f"{name}: {send_err}")
+
+    return {
+        "status": "success",
+        "date": today_str,
+        "eligible_missing_checkin": len(active_users) - len(checked_in_ids),
+        "reminders_sent": sent_count,
+        "errors": errors,
+    }
+
+
+@router.get("/cron/checkin-reminder")
+@router.post("/cron/checkin-reminder")
+def cron_checkin_reminder(request: Request):
+    """
+    Public cron / Cloud Scheduler webhook endpoint to trigger 9:00 AM check-in reminders.
+    Can be scheduled in Google Cloud Scheduler at 09:00 IST (03:30 UTC).
+    """
+    admin_client = get_admin_client() or supabase_anon
+    return dispatch_daily_checkin_reminders(admin_client)
+
 
 

@@ -188,12 +188,13 @@ async def root_whatsapp_webhook_incoming(request: Request):
 
 
 # =============================================================================
-# AUTOMATED 6:00 PM CHECK-OUT REMINDER SCHEDULER (IST)
+# AUTOMATED 9:00 AM CHECK-IN & 6:00 PM CHECK-OUT SCHEDULER (IST)
 # =============================================================================
+_checkin_cron_last_run_date = None
 _checkout_cron_last_run_date = None
 
-async def attendance_checkout_scheduler_loop():
-    global _checkout_cron_last_run_date
+async def attendance_daily_scheduler_loop():
+    global _checkin_cron_last_run_date, _checkout_cron_last_run_date
     import asyncio
     from datetime import datetime, timezone, timedelta
     IST = timezone(timedelta(hours=5, minutes=30))
@@ -204,7 +205,15 @@ async def attendance_checkout_scheduler_loop():
             now_ist = datetime.now(IST)
             today_str = now_ist.strftime("%Y-%m-%d")
 
-            # Fire automatically at 18:00 IST (6:00 PM)
+            # 1. Fire automatically at 09:00 IST (9:00 AM)
+            if now_ist.hour == 9 and now_ist.minute in (0, 1, 2) and _checkin_cron_last_run_date != today_str:
+                _checkin_cron_last_run_date = today_str
+                print(f"[ATTENDANCE SCHEDULER] 9:00 AM IST reached! Triggering automated check-in reminders for {today_str}...", flush=True)
+                from routers.attendance import dispatch_daily_checkin_reminders
+                res = dispatch_daily_checkin_reminders()
+                print(f"[ATTENDANCE SCHEDULER] Check-in reminder completed: {res}", flush=True)
+
+            # 2. Fire automatically at 18:00 IST (6:00 PM)
             if now_ist.hour == 18 and now_ist.minute in (0, 1, 2) and _checkout_cron_last_run_date != today_str:
                 _checkout_cron_last_run_date = today_str
                 print(f"[ATTENDANCE SCHEDULER] 6:00 PM IST reached! Triggering automated checkout reminders for {today_str}...", flush=True)
@@ -216,9 +225,9 @@ async def attendance_checkout_scheduler_loop():
 
 
 @app.on_event("startup")
-async def start_attendance_checkout_scheduler():
+async def start_attendance_daily_scheduler():
     import asyncio
-    asyncio.create_task(attendance_checkout_scheduler_loop())
+    asyncio.create_task(attendance_daily_scheduler_loop())
 
 
 
