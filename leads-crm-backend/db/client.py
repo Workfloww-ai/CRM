@@ -32,9 +32,7 @@ def get_admin_client():
     return None
 
 def get_client_for_user(token: str):
-    admin = get_admin_client()
-    if admin:
-        return admin
+    """Always returns an unprivileged client scoped to the authenticated user's JWT."""
     options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=options)
     # Also explicitly set it for postgrest just in case
