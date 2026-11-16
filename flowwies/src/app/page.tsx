@@ -1706,8 +1706,8 @@ export default function FlowwiesApp() {
                     type="button"
                     onClick={() => setPeopleDeptFilter(d)}
                     className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${peopleDeptFilter === d
-                        ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
-                        : "text-[var(--muted)] hover:text-[var(--ink)]"
+                      ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
                       }`}
                   >
                     {d === "all" ? "All" : d}
@@ -1724,8 +1724,8 @@ export default function FlowwiesApp() {
                     type="button"
                     onClick={() => setPeopleRoleFilter(r)}
                     className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all capitalize ${peopleRoleFilter === r
-                        ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
-                        : "text-[var(--muted)] hover:text-[var(--ink)]"
+                      ? "bg-white text-[var(--ink)] shadow-[1px_1px_0_var(--hard)] border border-[var(--ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)]"
                       }`}
                   >
                     {r}
@@ -1821,10 +1821,10 @@ export default function FlowwiesApp() {
                                   handleUpdateMemberAdmin(m.id, { departments: finalDepts });
                                 }}
                                 className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${hasDept
-                                    ? dName === "Growth"
-                                      ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
-                                      : "bg-[var(--bt)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
-                                    : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
+                                  ? dName === "Growth"
+                                    ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
+                                    : "bg-[var(--bt)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
+                                  : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
                                   }`}
                               >
                                 {hasDept ? `✓ ${dName}` : `+ ${dName}`}
@@ -1839,8 +1839,8 @@ export default function FlowwiesApp() {
                           type="button"
                           onClick={() => handleUpdateMemberAdmin(m.id, { can_access_crm: !m.can_access_crm })}
                           className={`flow-tag text-xs cursor-pointer transition-all ${m.can_access_crm
-                              ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
-                              : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
+                            ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
+                            : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
                             }`}
                         >
                           {m.can_access_crm ? "CRM On ↗" : "CRM Off ✕"}
@@ -1873,8 +1873,8 @@ export default function FlowwiesApp() {
                           type="button"
                           onClick={() => handleUpdateMemberAdmin(m.id, { is_active: m.is_active === false ? true : false })}
                           className={`flow-btn sm text-xs ${m.is_active === false
-                              ? "bg-[var(--vt2)] border-[var(--ink)] text-[var(--ink)]"
-                              : "bg-white text-[var(--muted)] hover:text-red-600"
+                            ? "bg-[var(--vt2)] border-[var(--ink)] text-[var(--ink)]"
+                            : "bg-white text-[var(--muted)] hover:text-red-600"
                             }`}
                         >
                           {m.is_active === false ? "Resume" : "Pause"}
@@ -2148,8 +2148,8 @@ export default function FlowwiesApp() {
               type="button"
               onClick={() => setAttendanceSubTab("punch")}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "punch"
-                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+                ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                : "text-[var(--muted)] hover:text-[var(--ink)]"
                 }`}
             >
               <Radio size={13} className={attendanceSubTab === "punch" ? "text-[var(--v)] animate-pulse" : ""} />
@@ -2160,8 +2160,8 @@ export default function FlowwiesApp() {
               type="button"
               onClick={() => setAttendanceSubTab("history")}
               className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "history"
-                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+                ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                : "text-[var(--muted)] hover:text-[var(--ink)]"
                 }`}
             >
               <Clock size={13} />
@@ -2177,8 +2177,8 @@ export default function FlowwiesApp() {
                     if (session?.access_token) loadTeamAttendance(session.access_token);
                   }}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "team"
-                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
                     }`}
                 >
                   <Users size={13} />
@@ -2192,8 +2192,8 @@ export default function FlowwiesApp() {
                     if (session?.access_token) loadAttendanceReport(session.access_token, attendanceReportMonth);
                   }}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "report"
-                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
                     }`}
                 >
                   <FileText size={13} />
@@ -2204,8 +2204,8 @@ export default function FlowwiesApp() {
                   type="button"
                   onClick={() => setAttendanceSubTab("sites")}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${attendanceSubTab === "sites"
-                      ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                      : "text-[var(--muted)] hover:text-[var(--ink)]"
+                    ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
                     }`}
                 >
                   <Building size={13} />
@@ -2352,8 +2352,8 @@ export default function FlowwiesApp() {
                       disabled={!isCheckedIn || isCheckedOut || attendanceActionLoading}
                       onClick={handleCheckOutAction}
                       className={`flow-btn py-4 px-6 rounded-2xl flex items-center justify-center gap-2 text-base font-black transition-all ${!isCheckedIn || isCheckedOut
-                          ? "opacity-50 cursor-not-allowed bg-gray-100 border-gray-300 text-gray-400 shadow-none"
-                          : "bg-amber-100 hover:bg-amber-200 border-2 border-[var(--ink)] text-[var(--ink)]"
+                        ? "opacity-50 cursor-not-allowed bg-gray-100 border-gray-300 text-gray-400 shadow-none"
+                        : "bg-amber-100 hover:bg-amber-200 border-2 border-[var(--ink)] text-[var(--ink)]"
                         }`}
                     >
                       {attendanceActionLoading && isCheckedIn ? (
@@ -2539,8 +2539,8 @@ export default function FlowwiesApp() {
                         <td className="py-3 px-3">
                           <span
                             className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full capitalize ${rec.status === "checked_out"
-                                ? "bg-blue-100 text-blue-900 border border-blue-300"
-                                : "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                              ? "bg-blue-100 text-blue-900 border border-blue-300"
+                              : "bg-emerald-100 text-emerald-900 border border-emerald-300"
                               }`}
                           >
                             {rec.status.replace("_", " ")}
@@ -2682,10 +2682,10 @@ export default function FlowwiesApp() {
                             <td className="py-3 px-3">
                               <span
                                 className={`text-xs font-extrabold px-2.5 py-1 rounded-full capitalize ${m.status === "checked_in" || m.status === "checked_out"
-                                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                    : m.status === "on_leave"
-                                      ? "bg-purple-100 text-purple-900 border border-purple-300"
-                                      : "bg-gray-100 text-gray-700 border border-gray-300"
+                                  ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                  : m.status === "on_leave"
+                                    ? "bg-purple-100 text-purple-900 border border-purple-300"
+                                    : "bg-gray-100 text-gray-700 border border-gray-300"
                                   }`}
                               >
                                 {m.status.replace("_", " ")}
@@ -3065,8 +3065,8 @@ export default function FlowwiesApp() {
             <button
               onClick={() => setActiveTab("attendance")}
               className={`px-2 lg:px-2.5 py-1 rounded-full font-bold text-xs lg:text-[13px] hover:bg-[var(--vt)] transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 ${activeTab === "attendance"
-                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                  : ""
+                ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                : ""
                 }`}
             >
               <MapPin size={13} className={activeTab === "attendance" ? "text-[var(--v)]" : ""} />
@@ -3120,8 +3120,8 @@ export default function FlowwiesApp() {
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className={`px-2.5 lg:px-3 py-1 rounded-full font-bold text-xs lg:text-[13px] transition-all whitespace-nowrap shrink-0 ${activeTab === "access"
-                    ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                    : "bg-[var(--vs)] border border-[var(--line2)] hover:bg-[var(--vt)]"
+                  ? "bg-[var(--vt2)] border border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                  : "bg-[var(--vs)] border border-[var(--line2)] hover:bg-[var(--vt)]"
                   }`}
               >
                 People & access
@@ -3943,7 +3943,7 @@ export default function FlowwiesApp() {
                           onChange={(e: any) => setApplyType(e.target.value)}
                           className="flow-field"
                         >
-                          <option value="WFH">🏠 Work From Home (WFH)</option>
+                          <option value="WFH">Work From Home (WFH)</option>
                           <option value="Monthly">Monthly Leave (2/month entitlement)</option>
                           <option value="Casual">Casual Leave</option>
                           <option value="Sick">Sick Leave</option>
@@ -4188,9 +4188,8 @@ export default function FlowwiesApp() {
                               return (
                                 <span
                                   key={li}
-                                  className={`block mt-1 text-[10px] rounded px-1.5 py-0.5 truncate border border-blue-400 bg-blue-100 text-blue-900 font-extrabold shadow-sm ${
-                                    l.status === "pending" ? "border-dashed opacity-80" : ""
-                                  }`}
+                                  className={`block mt-1 text-[10px] rounded px-1.5 py-0.5 truncate border border-blue-400 bg-blue-100 text-blue-900 font-extrabold shadow-sm ${l.status === "pending" ? "border-dashed opacity-80" : ""
+                                    }`}
                                   title={`${l.profiles?.full_name}: Work From Home (${l.status})`}
                                 >
                                   🏠 {getInitials(l.profiles?.full_name)} WFH
@@ -4219,7 +4218,7 @@ export default function FlowwiesApp() {
                       <span className="w-3 h-3 rounded bg-[var(--v)] inline-block"></span> Violet = Company Holiday
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded bg-blue-200 border border-blue-400 inline-block"></span> 🏠 Blue = Work From Home (WFH)
+                      <span className="w-3 h-3 rounded bg-blue-200 border border-blue-400 inline-block"></span> Blue = Work From Home (WFH)
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded bg-pink-200 border border-pink-400 inline-block"></span> 🎂 Pink = Birthday Leave (Auto-granted)
@@ -4816,9 +4815,9 @@ export default function FlowwiesApp() {
                       <div
                         key={w.id || idx}
                         className={`p-5 rounded-2xl border-2 border-[var(--line2)] shadow-[5px_5px_0_var(--hard)] transition-transform hover:scale-105 relative group ${idx % 4 === 0 ? "bg-[var(--vt2)] -rotate-2" :
-                            idx % 4 === 1 ? "bg-[var(--bt)] rotate-2" :
-                              idx % 4 === 2 ? "bg-[var(--vt)] -rotate-1" :
-                                "bg-[var(--vs)] rotate-1"
+                          idx % 4 === 1 ? "bg-[var(--bt)] rotate-2" :
+                            idx % 4 === 2 ? "bg-[var(--vt)] -rotate-1" :
+                              "bg-[var(--vs)] rotate-1"
                           }`}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1">
@@ -4878,8 +4877,8 @@ export default function FlowwiesApp() {
                       {viewingMember.full_name || "Team Member"}
                     </h3>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${viewingMember.is_active === false
-                        ? "bg-gray-100 text-gray-600 border-gray-300"
-                        : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      ? "bg-gray-100 text-gray-600 border-gray-300"
+                      : "bg-emerald-100 text-emerald-800 border-emerald-300"
                       }`}>
                       {viewingMember.is_active === false ? "Paused" : "Active Member"}
                     </span>
@@ -5032,8 +5031,8 @@ export default function FlowwiesApp() {
                                 setMemberEditForm({ ...memberEditForm, departments: next.length > 0 ? next : ["Tech"] });
                               }}
                               className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${hasDept
-                                  ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
-                                  : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
+                                ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)]"
+                                : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
                                 }`}
                             >
                               {hasDept ? `✓ ${dName}` : `+ ${dName}`}
@@ -5048,8 +5047,8 @@ export default function FlowwiesApp() {
                         type="button"
                         onClick={() => setMemberEditForm({ ...memberEditForm, can_access_crm: !memberEditForm.can_access_crm })}
                         className={`flow-tag text-xs cursor-pointer py-1.5 transition-all w-full text-center ${memberEditForm.can_access_crm
-                            ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
-                            : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
+                          ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[1px_1px_0_var(--hard)] text-[var(--ink)] font-bold"
+                          : "bg-[var(--vs)] text-[var(--muted)] border border-transparent"
                           }`}
                       >
                         {memberEditForm.can_access_crm ? "CRM Access Enabled ↗" : "CRM Access Disabled ✕"}
@@ -5061,8 +5060,8 @@ export default function FlowwiesApp() {
                         type="button"
                         onClick={() => setMemberEditForm({ ...memberEditForm, is_active: !memberEditForm.is_active })}
                         className={`flow-btn sm text-xs w-full ${memberEditForm.is_active
-                            ? "bg-emerald-100 border-emerald-400 text-emerald-900"
-                            : "bg-gray-200 border-gray-400 text-gray-700"
+                          ? "bg-emerald-100 border-emerald-400 text-emerald-900"
+                          : "bg-gray-200 border-gray-400 text-gray-700"
                           }`}
                       >
                         {memberEditForm.is_active ? "✓ Active Member" : "⏸ Paused (Inactive)"}
@@ -5272,8 +5271,8 @@ export default function FlowwiesApp() {
                       Departments: {((viewingMember.departments && viewingMember.departments.length > 0) ? viewingMember.departments : [viewingMember.department || "Tech"]).join(", ")}
                     </div>
                     <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${viewingMember.can_access_crm
-                        ? "bg-purple-100 border-purple-400 text-purple-900"
-                        : "bg-gray-100 border-gray-300 text-gray-600"
+                      ? "bg-purple-100 border-purple-400 text-purple-900"
+                      : "bg-gray-100 border-gray-300 text-gray-600"
                       }`}>
                       <Sparkles size={14} />
                       CRM Access: {viewingMember.can_access_crm ? "Enabled ↗" : "Disabled ✕"}
@@ -5449,8 +5448,8 @@ export default function FlowwiesApp() {
                                 {l.reason && <p className="text-[var(--muted)] text-[11px] mt-0.5">{l.reason}</p>}
                               </div>
                               <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase border ${l.status === "approved" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
-                                  l.status === "declined" ? "bg-red-100 text-red-800 border-red-300" :
-                                    "bg-amber-100 text-amber-800 border-amber-300"
+                                l.status === "declined" ? "bg-red-100 text-red-800 border-red-300" :
+                                  "bg-amber-100 text-amber-800 border-amber-300"
                                 }`}>
                                 {l.status}
                               </span>
@@ -5597,10 +5596,10 @@ export default function FlowwiesApp() {
                           setAddPersonForm({ ...addPersonForm, departments: next.length > 0 ? next : [dName] });
                         }}
                         className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${isSelected
-                            ? dName === "Growth"
-                              ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                              : "bg-[var(--bt)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
-                            : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
+                          ? dName === "Growth"
+                            ? "bg-[var(--vt2)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                            : "bg-[var(--bt)] border-[var(--ink)] shadow-[2px_2px_0_var(--hard)] text-[var(--ink)]"
+                          : "bg-white text-[var(--muted)] border-dashed border-[var(--line2)] opacity-70 hover:opacity-100"
                           }`}
                       >
                         {isSelected ? `✓ ${dName}` : `+ ${dName}`}
