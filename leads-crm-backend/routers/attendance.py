@@ -2,6 +2,7 @@ import os
 import io
 import csv
 import logging
+from calendar import monthrange
 from datetime import datetime, timezone, timedelta, time
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -51,6 +52,23 @@ def get_ist_now() -> datetime:
 
 def get_ist_today_str() -> str:
     return get_ist_now().strftime("%Y-%m-%d")
+
+
+def get_month_date_range(month_str: str) -> tuple:
+    """
+    Given a month string 'YYYY-MM', returns (start_date, end_date)
+    with accurate last day of the month (e.g. 2026-11-30, not 2026-11-31).
+    """
+    try:
+        parts = month_str.strip().split("-")
+        year = int(parts[0])
+        month = int(parts[1])
+        _, last_day = monthrange(year, month)
+        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+    except Exception:
+        now = get_ist_now()
+        _, last_day = monthrange(now.year, now.month)
+        return f"{now.year:04d}-{now.month:02d}-01", f"{now.year:04d}-{now.month:02d}-{last_day:02d}"
 
 
 def ensure_default_site(client):
@@ -326,11 +344,27 @@ def get_my_attendance_history(
         .limit(limit)
 
     if month:
-        # e.g. "2026-10"
-        query = query.gte("date", f"{month}-01").lte("date", f"{month}-31")
+        start_date, end_date = get_month_date_range(month)
+        query = query.gte("date", start_date).lte("date", end_date)
 
-    res = query.execute()
-    return res.data or []
+    try:
+        res = query.execute()
+        return res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching attendance history: {e}")
+        # Fallback without site embed
+        try:
+            plain_query = client.table("attendance_records") \
+                .select("*") \
+                .eq("user_id", user.id) \
+                .order("date", desc=True) \
+                .limit(limit)
+            if month:
+                start_date, end_date = get_month_date_range(month)
+                plain_query = plain_query.gte("date", start_date).lte("date", end_date)
+            return plain_query.execute().data or []
+        except Exception:
+            return []
 
 
 # =========================================================================
@@ -346,30 +380,70 @@ def get_team_today_attendance(
     date_str = target_date or get_ist_today_str()
 
     # 1. Fetch all active employees
-    employees = client.table("profiles") \
-        .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
-        .eq("is_active", True) \
-        .order("full_name") \
-        .execute().data or []
+    employees = []
+    try:
+        emp_res = client.table("profiles") \
+            .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
+            .eq("is_active", True) \
+            .order("full_name") \
+            .execute()
+        employees = emp_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching profiles for /team: {e}")
+        try:
+            admin_client = get_admin_client() or supabase_anon
+            emp_res = admin_client.table("profiles") \
+                .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
+                .eq("is_active", True) \
+                .order("full_name") \
+                .execute()
+            employees = emp_res.data or []
+        except Exception:
+            pass
 
     # 2. Fetch all attendance records for date
-    records = client.table("attendance_records") \
-        .select("*, attendance_sites(name)") \
-        .eq("date", date_str) \
-        .execute().data or []
-    rec_by_user = {r["user_id"]: r for r in records}
+    records = []
+    try:
+        rec_res = client.table("attendance_records") \
+            .select("*, attendance_sites(name)") \
+            .eq("date", date_str) \
+            .execute()
+        records = rec_res.data or []
+    except Exception as e:
+        logger.warning(f"attendance_sites embed warning: {e}, falling back to plain select")
+        try:
+            rec_res = client.table("attendance_records") \
+                .select("*") \
+                .eq("date", date_str) \
+                .execute()
+            records = rec_res.data or []
+        except Exception as e2:
+            logger.error(f"Failed to fetch attendance records: {e2}")
 
-    # 3. Fetch leaves on date
-    leaves = client.table("leave_requests") \
-        .select("*, profiles(full_name)") \
-        .eq("status", "approved") \
-        .lte("start_date", date_str) \
-        .gte("end_date", date_str) \
-        .execute().data or []
-    leave_by_user = {l["user_id"]: l for l in leaves}
+    rec_by_user = {r["user_id"]: r for r in records if "user_id" in r}
+
+    # 3. Fetch leaves on date (Do NOT embed profiles - leave_requests has 2 foreign keys to profiles causing PGRST201)
+    leaves = []
+    try:
+        leave_res = client.table("leave_requests") \
+            .select("*") \
+            .eq("status", "approved") \
+            .lte("start_date", date_str) \
+            .gte("end_date", date_str) \
+            .execute()
+        leaves = leave_res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching leave_requests for /team: {e}")
+
+    leave_by_user = {l["user_id"]: l for l in leaves if "user_id" in l}
 
     # 4. Check if holiday
-    holiday = client.table("company_holidays").select("*").eq("holiday_date", date_str).execute().data
+    holiday = []
+    try:
+        hol_res = client.table("company_holidays").select("*").eq("holiday_date", date_str).execute()
+        holiday = hol_res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching company_holidays for /team: {e}")
 
     team_status = []
     present_count = 0
@@ -420,50 +494,73 @@ def get_team_today_attendance(
 
 @router.get("/report")
 def get_monthly_attendance_report(
-    month: str = Query(..., description="Format: YYYY-MM e.g. 2026-10"),
+    month: str = Query(..., description="Format: YYYY-MM e.g. 2026-11"),
     user=Depends(require_hrms_manager_or_admin),
 ):
     client = get_client_for_user(user.token)
-
-    start_date = f"{month}-01"
-    end_date = f"{month}-31"
+    start_date, end_date = get_month_date_range(month)
 
     # All active profiles
-    profiles = client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute().data or []
+    profiles = []
+    try:
+        prof_res = client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute()
+        profiles = prof_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching profiles for /report: {e}")
+        try:
+            admin_client = get_admin_client() or supabase_anon
+            profiles = admin_client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute().data or []
+        except Exception:
+            pass
 
     # All attendance in range
-    records = client.table("attendance_records") \
-        .select("*") \
-        .gte("date", start_date) \
-        .lte("date", end_date) \
-        .execute().data or []
+    records = []
+    try:
+        rec_res = client.table("attendance_records") \
+            .select("*") \
+            .gte("date", start_date) \
+            .lte("date", end_date) \
+            .execute()
+        records = rec_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching attendance_records for /report: {e}")
 
     # All leaves in range
-    leaves = client.table("leave_requests") \
-        .select("*") \
-        .eq("status", "approved") \
-        .gte("end_date", start_date) \
-        .lte("start_date", end_date) \
-        .execute().data or []
+    leaves = []
+    try:
+        leave_res = client.table("leave_requests") \
+            .select("*") \
+            .eq("status", "approved") \
+            .gte("end_date", start_date) \
+            .lte("start_date", end_date) \
+            .execute()
+        leaves = leave_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching leave_requests for /report: {e}")
 
     # Holidays in month
-    holidays = client.table("company_holidays") \
-        .select("*") \
-        .gte("holiday_date", start_date) \
-        .lte("holiday_date", end_date) \
-        .execute().data or []
+    holidays = []
+    try:
+        hol_res = client.table("company_holidays") \
+            .select("*") \
+            .gte("holiday_date", start_date) \
+            .lte("holiday_date", end_date) \
+            .execute()
+        holidays = hol_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching company_holidays for /report: {e}")
 
     # Aggregate by employee
     report_rows = []
     for p in profiles:
         uid = p["id"]
-        emp_records = [r for r in records if r["user_id"] == uid]
+        emp_records = [r for r in records if r.get("user_id") == uid]
         present_days = len(emp_records)
         late_days = sum(1 for r in emp_records if r.get("is_late"))
         total_work_hours = sum(float(r.get("work_hours") or 0) for r in emp_records)
         avg_hours = round(total_work_hours / present_days, 2) if present_days > 0 else 0.0
 
-        emp_leaves = [l for l in leaves if l["user_id"] == uid]
+        emp_leaves = [l for l in leaves if l.get("user_id") == uid]
         leave_days = sum(float(l.get("days_count") or 1) for l in emp_leaves)
 
         report_rows.append({
@@ -493,15 +590,27 @@ def export_attendance_csv(
     user=Depends(require_hrms_manager_or_admin),
 ):
     client = get_client_for_user(user.token)
-    start_date = f"{month}-01"
-    end_date = f"{month}-31"
+    start_date, end_date = get_month_date_range(month)
 
-    records = client.table("attendance_records") \
-        .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, profiles(full_name, email, emp_code, department)") \
-        .gte("date", start_date) \
-        .lte("date", end_date) \
-        .order("date", desc=True) \
-        .execute().data or []
+    records = []
+    try:
+        records = client.table("attendance_records") \
+            .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, profiles(full_name, email, emp_code, department)") \
+            .gte("date", start_date) \
+            .lte("date", end_date) \
+            .order("date", desc=True) \
+            .execute().data or []
+    except Exception as e:
+        logger.warning(f"Export query with profiles embed failed: {e}, falling back to plain select")
+        try:
+            records = client.table("attendance_records") \
+                .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, user_id") \
+                .gte("date", start_date) \
+                .lte("date", end_date) \
+                .order("date", desc=True) \
+                .execute().data or []
+        except Exception:
+            records = []
 
     output = io.StringIO()
     writer = csv.writer(output)
