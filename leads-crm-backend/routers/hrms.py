@@ -495,7 +495,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
     return {
         "status": "created",
         "id": created_id,
-        "message": f"Team member created! Login credentials sent to {clean_email} (Default password: {DEFAULT_PASSWORD})."
+        "message": f"Team member created successfully! Login credentials have been sent to {clean_email}."
     }
 
 
