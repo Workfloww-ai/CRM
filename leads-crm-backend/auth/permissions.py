@@ -50,7 +50,14 @@ def require_crm_access(user=Depends(get_current_user)):
 
 def require_hrms_manager(user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
-    res = client.table("profiles").select("role_level, hrms_role, role_id, hrms_roles(name)").eq("id", user.id).single().execute()
+    try:
+        res = client.table("profiles").select("role_level, hrms_role, role_id, hrms_roles(name)").eq("id", user.id).single().execute()
+    except Exception:
+        try:
+            res = client.table("profiles").select("role_level, hrms_role, role_id").eq("id", user.id).single().execute()
+        except Exception:
+            res = None
+
     if not res or not res.data:
         raise HTTPException(status_code=403, detail="User profile not found")
 
@@ -60,8 +67,8 @@ def require_hrms_manager(user=Depends(get_current_user)):
     role_rel = p.get("hrms_roles")
     role_name = role_rel.get("name") if isinstance(role_rel, dict) else ""
 
-    if role_level < 1 and hrms_role != "manager" and role_name != "manager":
-        raise HTTPException(status_code=403, detail="Only managers can perform this action")
+    if role_level < 1 and hrms_role not in ("manager", "admin") and role_name not in ("manager", "admin"):
+        raise HTTPException(status_code=403, detail="Only managers and administrators can perform this action")
 
     return user
 

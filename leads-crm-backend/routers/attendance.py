@@ -2,6 +2,7 @@ import os
 import io
 import csv
 import logging
+from calendar import monthrange
 from datetime import datetime, timezone, timedelta, time
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -23,6 +24,8 @@ from services.whatsapp import (
     verify_meta_signature,
     send_whatsapp_message,
     send_location_request_message,
+    send_checkout_reminder_message,
+    send_checkin_prompt_message,
     send_checkin_reminder_template,
     normalize_phone,
     extract_whatsapp_message,
@@ -51,6 +54,23 @@ def get_ist_now() -> datetime:
 
 def get_ist_today_str() -> str:
     return get_ist_now().strftime("%Y-%m-%d")
+
+
+def get_month_date_range(month_str: str) -> tuple:
+    """
+    Given a month string 'YYYY-MM', returns (start_date, end_date)
+    with accurate last day of the month (e.g. 2026-11-30, not 2026-11-31).
+    """
+    try:
+        parts = month_str.strip().split("-")
+        year = int(parts[0])
+        month = int(parts[1])
+        _, last_day = monthrange(year, month)
+        return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+    except Exception:
+        now = get_ist_now()
+        _, last_day = monthrange(now.year, now.month)
+        return f"{now.year:04d}-{now.month:02d}-01", f"{now.year:04d}-{now.month:02d}-{last_day:02d}"
 
 
 def ensure_default_site(client):
@@ -326,11 +346,27 @@ def get_my_attendance_history(
         .limit(limit)
 
     if month:
-        # e.g. "2026-10"
-        query = query.gte("date", f"{month}-01").lte("date", f"{month}-31")
+        start_date, end_date = get_month_date_range(month)
+        query = query.gte("date", start_date).lte("date", end_date)
 
-    res = query.execute()
-    return res.data or []
+    try:
+        res = query.execute()
+        return res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching attendance history: {e}")
+        # Fallback without site embed
+        try:
+            plain_query = client.table("attendance_records") \
+                .select("*") \
+                .eq("user_id", user.id) \
+                .order("date", desc=True) \
+                .limit(limit)
+            if month:
+                start_date, end_date = get_month_date_range(month)
+                plain_query = plain_query.gte("date", start_date).lte("date", end_date)
+            return plain_query.execute().data or []
+        except Exception:
+            return []
 
 
 # =========================================================================
@@ -346,30 +382,70 @@ def get_team_today_attendance(
     date_str = target_date or get_ist_today_str()
 
     # 1. Fetch all active employees
-    employees = client.table("profiles") \
-        .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
-        .eq("is_active", True) \
-        .order("full_name") \
-        .execute().data or []
+    employees = []
+    try:
+        emp_res = client.table("profiles") \
+            .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
+            .eq("is_active", True) \
+            .order("full_name") \
+            .execute()
+        employees = emp_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching profiles for /team: {e}")
+        try:
+            admin_client = get_admin_client() or supabase_anon
+            emp_res = admin_client.table("profiles") \
+                .select("id, full_name, email, emp_code, department, phone, avatar_color, is_active") \
+                .eq("is_active", True) \
+                .order("full_name") \
+                .execute()
+            employees = emp_res.data or []
+        except Exception:
+            pass
 
     # 2. Fetch all attendance records for date
-    records = client.table("attendance_records") \
-        .select("*, attendance_sites(name)") \
-        .eq("date", date_str) \
-        .execute().data or []
-    rec_by_user = {r["user_id"]: r for r in records}
+    records = []
+    try:
+        rec_res = client.table("attendance_records") \
+            .select("*, attendance_sites(name)") \
+            .eq("date", date_str) \
+            .execute()
+        records = rec_res.data or []
+    except Exception as e:
+        logger.warning(f"attendance_sites embed warning: {e}, falling back to plain select")
+        try:
+            rec_res = client.table("attendance_records") \
+                .select("*") \
+                .eq("date", date_str) \
+                .execute()
+            records = rec_res.data or []
+        except Exception as e2:
+            logger.error(f"Failed to fetch attendance records: {e2}")
 
-    # 3. Fetch leaves on date
-    leaves = client.table("leave_requests") \
-        .select("*, profiles(full_name)") \
-        .eq("status", "approved") \
-        .lte("start_date", date_str) \
-        .gte("end_date", date_str) \
-        .execute().data or []
-    leave_by_user = {l["user_id"]: l for l in leaves}
+    rec_by_user = {r["user_id"]: r for r in records if "user_id" in r}
+
+    # 3. Fetch leaves on date (Do NOT embed profiles - leave_requests has 2 foreign keys to profiles causing PGRST201)
+    leaves = []
+    try:
+        leave_res = client.table("leave_requests") \
+            .select("*") \
+            .eq("status", "approved") \
+            .lte("start_date", date_str) \
+            .gte("end_date", date_str) \
+            .execute()
+        leaves = leave_res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching leave_requests for /team: {e}")
+
+    leave_by_user = {l["user_id"]: l for l in leaves if "user_id" in l}
 
     # 4. Check if holiday
-    holiday = client.table("company_holidays").select("*").eq("holiday_date", date_str).execute().data
+    holiday = []
+    try:
+        hol_res = client.table("company_holidays").select("*").eq("holiday_date", date_str).execute()
+        holiday = hol_res.data or []
+    except Exception as e:
+        logger.warning(f"Error fetching company_holidays for /team: {e}")
 
     team_status = []
     present_count = 0
@@ -420,50 +496,73 @@ def get_team_today_attendance(
 
 @router.get("/report")
 def get_monthly_attendance_report(
-    month: str = Query(..., description="Format: YYYY-MM e.g. 2026-10"),
+    month: str = Query(..., description="Format: YYYY-MM e.g. 2026-11"),
     user=Depends(require_hrms_manager_or_admin),
 ):
     client = get_client_for_user(user.token)
-
-    start_date = f"{month}-01"
-    end_date = f"{month}-31"
+    start_date, end_date = get_month_date_range(month)
 
     # All active profiles
-    profiles = client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute().data or []
+    profiles = []
+    try:
+        prof_res = client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute()
+        profiles = prof_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching profiles for /report: {e}")
+        try:
+            admin_client = get_admin_client() or supabase_anon
+            profiles = admin_client.table("profiles").select("id, full_name, email, department, emp_code").eq("is_active", True).execute().data or []
+        except Exception:
+            pass
 
     # All attendance in range
-    records = client.table("attendance_records") \
-        .select("*") \
-        .gte("date", start_date) \
-        .lte("date", end_date) \
-        .execute().data or []
+    records = []
+    try:
+        rec_res = client.table("attendance_records") \
+            .select("*") \
+            .gte("date", start_date) \
+            .lte("date", end_date) \
+            .execute()
+        records = rec_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching attendance_records for /report: {e}")
 
     # All leaves in range
-    leaves = client.table("leave_requests") \
-        .select("*") \
-        .eq("status", "approved") \
-        .gte("end_date", start_date) \
-        .lte("start_date", end_date) \
-        .execute().data or []
+    leaves = []
+    try:
+        leave_res = client.table("leave_requests") \
+            .select("*") \
+            .eq("status", "approved") \
+            .gte("end_date", start_date) \
+            .lte("start_date", end_date) \
+            .execute()
+        leaves = leave_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching leave_requests for /report: {e}")
 
     # Holidays in month
-    holidays = client.table("company_holidays") \
-        .select("*") \
-        .gte("holiday_date", start_date) \
-        .lte("holiday_date", end_date) \
-        .execute().data or []
+    holidays = []
+    try:
+        hol_res = client.table("company_holidays") \
+            .select("*") \
+            .gte("holiday_date", start_date) \
+            .lte("holiday_date", end_date) \
+            .execute()
+        holidays = hol_res.data or []
+    except Exception as e:
+        logger.error(f"Error fetching company_holidays for /report: {e}")
 
     # Aggregate by employee
     report_rows = []
     for p in profiles:
         uid = p["id"]
-        emp_records = [r for r in records if r["user_id"] == uid]
+        emp_records = [r for r in records if r.get("user_id") == uid]
         present_days = len(emp_records)
         late_days = sum(1 for r in emp_records if r.get("is_late"))
         total_work_hours = sum(float(r.get("work_hours") or 0) for r in emp_records)
         avg_hours = round(total_work_hours / present_days, 2) if present_days > 0 else 0.0
 
-        emp_leaves = [l for l in leaves if l["user_id"] == uid]
+        emp_leaves = [l for l in leaves if l.get("user_id") == uid]
         leave_days = sum(float(l.get("days_count") or 1) for l in emp_leaves)
 
         report_rows.append({
@@ -493,15 +592,27 @@ def export_attendance_csv(
     user=Depends(require_hrms_manager_or_admin),
 ):
     client = get_client_for_user(user.token)
-    start_date = f"{month}-01"
-    end_date = f"{month}-31"
+    start_date, end_date = get_month_date_range(month)
 
-    records = client.table("attendance_records") \
-        .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, profiles(full_name, email, emp_code, department)") \
-        .gte("date", start_date) \
-        .lte("date", end_date) \
-        .order("date", desc=True) \
-        .execute().data or []
+    records = []
+    try:
+        records = client.table("attendance_records") \
+            .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, profiles(full_name, email, emp_code, department)") \
+            .gte("date", start_date) \
+            .lte("date", end_date) \
+            .order("date", desc=True) \
+            .execute().data or []
+    except Exception as e:
+        logger.warning(f"Export query with profiles embed failed: {e}, falling back to plain select")
+        try:
+            records = client.table("attendance_records") \
+                .select("date, check_in_at, check_out_at, work_hours, is_late, check_in_within_geofence, check_in_source, user_id") \
+                .gte("date", start_date) \
+                .lte("date", end_date) \
+                .order("date", desc=True) \
+                .execute().data or []
+        except Exception:
+            records = []
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -805,10 +916,13 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
     # 4. Handle "OUT" or "CHECKOUT" (only when coordinates are not sent)
     is_checkout = (
-        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT")
+        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "BYE")
         or "CHECK OUT" in text_content
         or "CHECKOUT" in text_content
         or "CHECK-OUT" in text_content
+        or "BTN_CHECKOUT" in text_content
+        or text_content.startswith("OUT")
+        or text_content.endswith("OUT")
     )
     if is_checkout and (lat is None or lng is None):
         existing = []
@@ -830,31 +944,39 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             return {"status": "not_checked_in"}
 
         if rec.get("check_out_at"):
+            prev_out = rec.get("check_out_at")
+            try:
+                out_dt = datetime.fromisoformat(prev_out.replace("Z", "+00:00")).astimezone(IST)
+                out_str = out_dt.strftime("%I:%M %p")
+            except Exception:
+                out_str = prev_out
             send_whatsapp_message(
                 from_phone,
-                f"Hello {emp_name}, you have already checked out today at {rec.get('check_out_at')}."
+                f"Hello {emp_name}, you have already checked out today at {out_str}.\nHave a wonderful evening! 🌟"
             )
             return {"status": "already_checked_out"}
 
-        # Calculate work hours
-        work_hours = None
-        in_time_str = rec.get("check_in_at")
-        if in_time_str:
-            try:
-                in_dt = datetime.fromisoformat(in_time_str.replace("Z", "+00:00"))
-                diff_sec = (ist_now.astimezone(timezone.utc) - in_dt.astimezone(timezone.utc)).total_seconds()
-                work_hours = round(max(0.0, diff_sec / 3600.0), 2)
-            except Exception:
-                pass
+        # Mark that check-out location verification is requested
+        try:
+            admin_client.table("attendance_records").update({"notes": "checkout_requested"}).eq("id", rec["id"]).execute()
+        except Exception as upd_err:
+            print(f"[WHATSAPP WEBHOOK] Could not set checkout_requested note: {upd_err}", flush=True)
 
-        checkout_attendance_in_supabase(admin_client, user_id, today_str, ist_now.isoformat(), work_hours)
+        site = ensure_default_site(admin_client)
+        site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
 
-        hours_msg = f" Total work duration: {work_hours} hrs." if work_hours else ""
+        # 1. Send friendly acknowledgment message
         send_whatsapp_message(
             from_phone,
-            f"👋 Goodbye {emp_name}! You have successfully checked out at {time_str}.{hours_msg}\nHave a wonderful evening!"
+            f"👋 Hi {emp_name}! Wrapping up your shift?"
         )
-        return {"status": "checked_out"}
+
+        # 2. Immediately send interactive location request button
+        prompt_text = (
+            f"Please tap the button below to share your current location and verify your check-out at {site_name}."
+        )
+        send_location_request_message(from_phone, prompt_text)
+        return {"status": "checkout_location_requested"}
 
     # 5. Handle Location Attachment (GPS Pin Shared)
     if lat is not None and lng is not None:
@@ -863,10 +985,70 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
         within_geofence = check_geofence_with_postgis(admin_client, float(lat), float(lng), site_id) if site_id else False
 
+        # Look up existing record for today
+        existing = []
+        try:
+            existing = admin_client.table("attendance_records") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .eq("date", today_str) \
+                .execute().data
+        except Exception as sel_e:
+            print(f"[WHATSAPP WEBHOOK] Location existing check error: {sel_e}", flush=True)
+
+        rec = existing[0] if existing else None
+
+        # Determine if this location is for CHECK-OUT:
+        is_checkout_location = False
+        if rec and rec.get("check_in_at") and not rec.get("check_out_at"):
+            # If user explicitly requested checkout OR already completed check-in location
+            if rec.get("notes") == "checkout_requested" or rec.get("check_in_latitude") is not None:
+                is_checkout_location = True
+
+        if is_checkout_location:
+            # Calculate work duration
+            work_hours = None
+            in_time_str = rec.get("check_in_at")
+            if in_time_str:
+                try:
+                    in_dt = datetime.fromisoformat(in_time_str.replace("Z", "+00:00"))
+                    diff_sec = (ist_now.astimezone(timezone.utc) - in_dt.astimezone(timezone.utc)).total_seconds()
+                    work_hours = round(max(0.0, diff_sec / 3600.0), 2)
+                except Exception:
+                    pass
+
+            upd_data = {
+                "check_out_at": ist_now.isoformat(),
+                "check_out_latitude": float(lat),
+                "check_out_longitude": float(lng),
+                "check_out_within_geofence": within_geofence,
+                "status": "checked_out",
+                "work_hours": work_hours,
+                "notes": None,
+            }
+            try:
+                admin_client.table("attendance_records").update(upd_data).eq("id", rec["id"]).execute()
+            except Exception as upd_e:
+                print(f"[WHATSAPP WEBHOOK ERROR] Checkout update failed: {upd_e}", flush=True)
+                checkout_attendance_in_supabase(admin_client, user_id, today_str, ist_now.isoformat(), work_hours)
+
+            fence_msg = f"✅ Inside {site_name} geo-fence." if within_geofence else f"⚠️ Outside office radius for {site_name}."
+            hours_str = f"*{work_hours} hours*" if work_hours is not None else "full shift"
+
+            reply = (
+                f"👋 Goodbye {emp_name}!\n\n"
+                f"✅ Check-out successfully recorded at {time_str}.\n"
+                f"⏱️ Total work duration: {hours_str} completed today.\n"
+                f"📍 Status: {fence_msg}\n\n"
+                f"Thank you for your hard work today! Have a wonderful evening and see you tomorrow! 🌟"
+            )
+            send_whatsapp_message(from_phone, reply)
+            return {"status": "checked_out", "work_hours": work_hours, "within_geofence": within_geofence}
+
+        # Otherwise, this location is for CHECK-IN:
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Record attendance with coordinates (handles insert/update safely via RPC/table)
         saved_rec = record_attendance_in_supabase(
             admin_client,
             user_id=user_id,
@@ -884,21 +1066,24 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         late_msg = " (Marked Late)" if late_flag else ""
 
         reply = (
-            f"✅ Good morning {emp_name}!\n"
+            f"✅ Good morning {emp_name}!\n\n"
             f"Attendance marked at {time_str}{late_msg}.\n"
             f"Site: {site_name}\n"
             f"Status: {fence_msg}\n\n"
-            f"Reply 'OUT' when leaving to end your shift."
+            f"Reply 'Check-Out' when leaving to end your shift. Have a productive day! 🚀"
         )
         send_whatsapp_message(from_phone, reply)
         return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
 
     # 6. Handle "Check In" button tap or text check-in prompt -> Record Attendance Immediately in Supabase!
     is_checkin_prompt = (
-        text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN")
+        text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN", "GOOD MORNING", "GM", "BTN_CHECKIN")
         or "CHECK IN" in text_content
         or "CHECKIN" in text_content
         or "CHECK-IN" in text_content
+        or "BTN_CHECKIN" in text_content
+        or text_content == "IN"
+        or text_content.startswith("IN ")
     )
     if is_checkin_prompt:
         site = ensure_default_site(admin_client)
@@ -908,7 +1093,36 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Store check-in record in Supabase immediately
+        # Check if already checked in today
+        existing = admin_client.table("attendance_records") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("date", today_str) \
+            .execute().data
+
+        if existing and existing[0].get("check_in_at"):
+            prev_in_time = existing[0].get("check_in_at")
+            try:
+                prev_dt = datetime.fromisoformat(prev_in_time.replace("Z", "+00:00")).astimezone(IST)
+                prev_time_str = prev_dt.strftime("%I:%M %p")
+            except Exception:
+                prev_time_str = prev_in_time
+
+            send_whatsapp_message(
+                from_phone,
+                f"ℹ️ Hi {emp_name}, your attendance was already recorded today at {prev_time_str}.\n"
+                f"Status: Checked In ✅\n\n"
+                f"Reply 'Check-Out' when leaving to record your check-out."
+            )
+            return {"status": "already_checked_in", "user_id": user_id, "check_in_at": prev_in_time}
+
+        # 1. Send friendly greeting acknowledgment message
+        send_whatsapp_message(
+            from_phone,
+            f"👋 Good morning {emp_name}! Ready to start your work day?"
+        )
+
+        # 2. Store check-in record in Supabase immediately
         saved_record = record_attendance_in_supabase(
             admin_client,
             user_id=user_id,
@@ -920,12 +1134,10 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             shift_id=shift.get("id") if shift else None,
         )
 
+        # 3. Immediately send native WhatsApp Interactive Location Request button
         loc_prompt_text = (
-            f"👋 Hi {emp_name}!\n"
             f"Please tap the button below to share your current location and complete your check-in at {site_name}."
         )
-
-        # Send native WhatsApp Interactive Location Request button (dovesoft / mobiCOMM)
         send_location_request_message(from_phone, loc_prompt_text)
 
         return {
@@ -1004,4 +1216,143 @@ def trigger_checkin_reminder(
                 sent_count += 1
 
     return {"status": "success", "reminders_sent": sent_count, "date": date_str}
+
+
+def dispatch_daily_checkout_reminders(client=None) -> dict:
+    """
+    Finds all active employees who checked in today but haven't checked out yet,
+    and sends them the 6:00 PM Check-Out prompt on WhatsApp.
+    """
+    if not client:
+        client = get_admin_client() or supabase_anon
+
+    today_str = get_ist_today_str()
+    try:
+        records = client.table("attendance_records") \
+            .select("user_id, check_in_at, check_out_at, profiles(id, full_name, phone, is_active)") \
+            .eq("date", today_str) \
+            .not_.is_("check_in_at", "null") \
+            .is_("check_out_at", "null") \
+            .execute().data or []
+    except Exception as e:
+        logger.error(f"Error fetching checked-in employees for 6 PM reminder: {e}")
+        try:
+            records = client.table("attendance_records") \
+                .select("user_id, check_in_at, check_out_at") \
+                .eq("date", today_str) \
+                .execute().data or []
+            records = [r for r in records if r.get("check_in_at") and not r.get("check_out_at")]
+        except Exception:
+            records = []
+
+    sent_count = 0
+    errors = []
+
+    for r in records:
+        prof = r.get("profiles")
+        user_id = r.get("user_id")
+        if not prof and user_id:
+            try:
+                p_res = client.table("profiles").select("id, full_name, phone, is_active").eq("id", user_id).single().execute()
+                prof = p_res.data
+            except Exception:
+                pass
+
+        if not prof or prof.get("is_active") is False:
+            continue
+
+        phone = prof.get("phone")
+        name = prof.get("full_name") or "Team Member"
+        if not phone:
+            continue
+
+        try:
+            ok = send_checkout_reminder_message(phone, name)
+            if ok:
+                sent_count += 1
+                logger.info(f"6 PM Check-out reminder sent to {name} ({phone})")
+        except Exception as send_err:
+            errors.append(f"{name}: {send_err}")
+
+    return {
+        "status": "success",
+        "date": today_str,
+        "eligible_checked_in": len(records),
+        "reminders_sent": sent_count,
+        "errors": errors,
+    }
+
+
+@router.post("/send-checkout-reminder")
+def trigger_checkout_reminder(
+    user=Depends(require_hrms_manager_or_admin),
+):
+    """Manual trigger by manager or admin to dispatch 6 PM check-out reminders."""
+    client = get_client_for_user(user.token)
+    return dispatch_daily_checkout_reminders(client)
+
+
+@router.get("/cron/checkout-reminder")
+@router.post("/cron/checkout-reminder")
+def cron_checkout_reminder(request: Request):
+    """
+    Public cron / Cloud Scheduler webhook endpoint to trigger 6:00 PM check-out reminders.
+    Can be scheduled in Google Cloud Scheduler at 18:00 IST (12:30 UTC).
+    """
+    admin_client = get_admin_client() or supabase_anon
+    return dispatch_daily_checkout_reminders(admin_client)
+
+
+def dispatch_daily_checkin_reminders(client=None) -> dict:
+    """
+    Finds all active employees who haven't checked in yet today,
+    and sends them the 9:00 AM Check-In prompt on WhatsApp.
+    """
+    if not client:
+        client = get_admin_client() or supabase_anon
+
+    today_str = get_ist_today_str()
+    try:
+        active_users = client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+        today_records = client.table("attendance_records").select("user_id").eq("date", today_str).execute().data or []
+        checked_in_ids = {r["user_id"] for r in today_records}
+    except Exception as e:
+        logger.error(f"Error fetching profiles for 9 AM reminder: {e}")
+        return {"status": "error", "error": str(e)}
+
+    sent_count = 0
+    errors = []
+
+    for u in active_users:
+        if u["id"] not in checked_in_ids and u.get("phone"):
+            name = u.get("full_name") or "Team Member"
+            phone = u["phone"]
+            try:
+                ok = send_checkin_prompt_message(phone, name)
+                if ok:
+                    sent_count += 1
+                    logger.info(f"9 AM Check-in reminder sent to {name} ({phone})")
+            except Exception as send_err:
+                errors.append(f"{name}: {send_err}")
+
+    return {
+        "status": "success",
+        "date": today_str,
+        "eligible_missing_checkin": len(active_users) - len(checked_in_ids),
+        "reminders_sent": sent_count,
+        "errors": errors,
+    }
+
+
+@router.get("/cron/checkin-reminder")
+@router.post("/cron/checkin-reminder")
+def cron_checkin_reminder(request: Request):
+    """
+    Public cron / Cloud Scheduler webhook endpoint to trigger 9:00 AM check-in reminders.
+    Can be scheduled in Google Cloud Scheduler at 09:00 IST (03:30 UTC).
+    """
+    admin_client = get_admin_client() or supabase_anon
+    return dispatch_daily_checkin_reminders(admin_client)
+
+
 

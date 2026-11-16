@@ -649,34 +649,41 @@ def apply_leave(body: LeaveRequestCreate, user=Depends(get_current_user)):
 
     days_count = (end_dt - start_dt).days + 1
 
-    # Rule: 2 leaves per month, renews every month
-    req_month_str = start_dt.strftime("%Y-%m")
-    existing_reqs = client.table("leave_requests").select("*").eq("user_id", user.id).execute().data or []
+    is_wfh = (body.leave_type or "").strip().upper() == "WFH"
 
-    taken_in_target_month = 0.0
-    for r in existing_reqs:
-        if r.get("status") in ("approved", "pending"):
-            if r.get("leave_type") != "Birthday":
-                if r.get("start_date", "").startswith(req_month_str):
-                    taken_in_target_month += float(r.get("days_count", 0) or 0)
+    # Rule: 2 leaves per month, renews every month (WFH does NOT deduct from leave quota)
+    if not is_wfh:
+        req_month_str = start_dt.strftime("%Y-%m")
+        existing_reqs = client.table("leave_requests").select("*").eq("user_id", user.id).execute().data or []
 
-    monthly_allowance = 2.0
-    available = max(0.0, monthly_allowance - taken_in_target_month)
+        taken_in_target_month = 0.0
+        for r in existing_reqs:
+            if r.get("status") in ("approved", "pending"):
+                if r.get("leave_type") not in ("Birthday", "WFH"):
+                    if r.get("start_date", "").startswith(req_month_str):
+                        taken_in_target_month += float(r.get("days_count", 0) or 0)
 
-    if days_count > available:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Every employee gets 2 leaves per month (renews every month). You have {available:.1f} leave(s) available for {start_dt.strftime('%B %Y')}. Requested: {days_count} day(s)."
-        )
+        monthly_allowance = 2.0
+        available = max(0.0, monthly_allowance - taken_in_target_month)
+
+        if days_count > available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Every employee gets 2 leaves per month (renews every month). You have {available:.1f} leave(s) available for {start_dt.strftime('%B %Y')}. Requested: {days_count} day(s)."
+            )
+
+    # Check if user is manager or admin (can auto-approve WFH)
+    me = get_hrms_profile(client, user.id).data or {}
+    is_admin = (me.get("role_level") or 0) >= 1 or (me.get("hrms_role") or "").lower() in ("admin", "manager")
 
     leave_data = {
         "user_id": user.id,
-        "leave_type": body.leave_type or "Monthly",
+        "leave_type": "WFH" if is_wfh else (body.leave_type or "Monthly"),
         "start_date": body.start_date,
         "end_date": body.end_date,
         "days_count": days_count,
-        "reason": body.reason,
-        "status": "pending"
+        "reason": body.reason or ("Work From Home" if is_wfh else ""),
+        "status": "approved" if (is_wfh and is_admin) else "pending"
     }
 
     try:
