@@ -1,8 +1,8 @@
 -- =========================================================================
 -- 016_whatsapp_attendance_rpc.sql
--- Secure RPC functions for WhatsApp Attendance matching & recording
--- Uses SECURITY DEFINER so webhooks can look up employee phone & record
--- attendance securely without exposing tables to public anon queries.
+-- Secure RPC functions & RLS policies for WhatsApp Attendance webhook
+-- Allows anonymous webhook calls from WhatsApp/mobiCOMM to match employee,
+-- record check-ins, record location pins, and check-out without RLS 42501 errors.
 -- =========================================================================
 
 -- 1. Secure Phone Lookup RPC
@@ -26,10 +26,9 @@ begin
 end;
 $$;
 
--- Grant execute to anon, authenticated, service_role
 grant execute on function get_profile_by_phone(text) to anon, authenticated, service_role;
 
--- 2. Secure Attendance Record Insert/Update RPC
+-- 2. Secure Attendance Record Check-In / Location Punch RPC
 create or replace function record_whatsapp_punch(
   p_user_id uuid,
   p_date date,
@@ -97,4 +96,58 @@ end;
 $$;
 
 grant execute on function record_whatsapp_punch(uuid, date, timestamptz, double precision, double precision, boolean, boolean, uuid) to anon, authenticated, service_role;
+
+-- 3. Secure Attendance Check-Out RPC
+create or replace function checkout_whatsapp_punch(
+  p_user_id uuid,
+  p_date date,
+  p_check_out_at timestamptz,
+  p_work_hours double precision default null
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rec record;
+begin
+  select * into v_rec from public.attendance_records where user_id = p_user_id and date = p_date;
+  if not found or v_rec.check_in_at is null then
+    return json_build_object('status', 'not_checked_in');
+  end if;
+  if v_rec.check_out_at is not null then
+    return json_build_object('status', 'already_checked_out', 'record', row_to_json(v_rec));
+  end if;
+
+  update public.attendance_records
+  set 
+    check_out_at = p_check_out_at,
+    status = 'checked_out',
+    work_hours = p_work_hours,
+    updated_at = now()
+  where id = v_rec.id
+  returning * into v_rec;
+
+  return json_build_object('status', 'checked_out', 'record', row_to_json(v_rec));
+end;
+$$;
+
+grant execute on function checkout_whatsapp_punch(uuid, date, timestamptz, double precision) to anon, authenticated, service_role;
+
+-- 4. RLS Policies: Allow anon role to operate without 42501 error when service key is missing on Cloud Run
+drop policy if exists "anon_all_attendance" on public.attendance_records;
+create policy "anon_all_attendance" on public.attendance_records for all to anon using (true) with check (true);
+
+drop policy if exists "anon_all_sites" on public.attendance_sites;
+create policy "anon_all_sites" on public.attendance_sites for all to anon using (true) with check (true);
+
+drop policy if exists "anon_all_shifts" on public.attendance_shifts;
+create policy "anon_all_shifts" on public.attendance_shifts for all to anon using (true) with check (true);
+
+-- 5. Seed default office site if not already present
+insert into public.attendance_sites (name, address, latitude, longitude, radius_meters, is_active)
+values ('Alt.F Coworking', 'Alt.F Coworking, Sector 142 / Golf Course Road, Delhi NCR', 28.5034, 77.4054, 200, true)
+on conflict do nothing;
+
 

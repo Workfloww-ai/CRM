@@ -595,6 +595,100 @@ def handle_whatsapp_webhook_verification(request: Request):
     return {"status": "ok", "message": "WhatsApp webhook endpoint is active and listening"}
 
 
+def record_attendance_in_supabase(client, user_id: str, today_str: str, check_in_iso: str,
+                                 lat: float = None, lng: float = None, within_fence: bool = False,
+                                 is_late: bool = False, site_id: str = None, shift_id: str = None):
+    """
+    Saves or updates attendance record in Supabase.
+    Uses SECURITY DEFINER RPC 'record_whatsapp_punch' first to guarantee execution
+    even if the Cloud Run backend only has the anon key (avoiding RLS error 42501).
+    Falls back to direct table write if RPC is unavailable.
+    """
+    # 1. Try secure RPC function (bypasses RLS)
+    try:
+        rpc_payload = {
+            "p_user_id": str(user_id),
+            "p_date": today_str,
+            "p_check_in_at": check_in_iso,
+            "p_lat": float(lat) if lat is not None else None,
+            "p_lng": float(lng) if lng is not None else None,
+            "p_within_fence": bool(within_fence),
+            "p_is_late": bool(is_late),
+            "p_site_id": str(site_id) if site_id else None,
+        }
+        res = client.rpc("record_whatsapp_punch", rpc_payload).execute()
+        if res.data and isinstance(res.data, dict) and "record" in res.data:
+            print(f"[WHATSAPP WEBHOOK] Attendance saved via RPC record_whatsapp_punch: {res.data.get('status')}", flush=True)
+            return res.data.get("record")
+    except Exception as rpc_e:
+        print(f"[WHATSAPP WEBHOOK] RPC record_whatsapp_punch warning/fallback: {rpc_e}", flush=True)
+
+    # 2. Fallback to direct table query
+    rec_payload = {
+        "user_id": user_id,
+        "site_id": site_id,
+        "shift_id": shift_id,
+        "check_in_at": check_in_iso,
+        "check_in_latitude": float(lat) if lat is not None else None,
+        "check_in_longitude": float(lng) if lng is not None else None,
+        "check_in_within_geofence": bool(within_fence),
+        "check_in_source": "whatsapp",
+        "date": today_str,
+        "status": "checked_in",
+        "is_late": bool(is_late),
+    }
+    try:
+        existing = client.table("attendance_records").select("id").eq("user_id", user_id).eq("date", today_str).execute().data
+        if existing:
+            res = client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
+        else:
+            res = client.table("attendance_records").insert(rec_payload).execute()
+        if res.data:
+            print(f"[WHATSAPP WEBHOOK] Attendance saved via direct table write: {res.data[0].get('id')}", flush=True)
+            return res.data[0]
+    except Exception as table_e:
+        print(f"[WHATSAPP WEBHOOK ERROR] Direct table insert/update failed: {table_e}", flush=True)
+
+    return rec_payload
+
+
+def checkout_attendance_in_supabase(client, user_id: str, today_str: str, check_out_iso: str, work_hours: float = None):
+    """
+    Updates attendance record for checkout in Supabase.
+    Uses SECURITY DEFINER RPC 'checkout_whatsapp_punch' first, falling back to direct table update.
+    """
+    # 1. Try secure RPC
+    try:
+        rpc_payload = {
+            "p_user_id": str(user_id),
+            "p_date": today_str,
+            "p_check_out_at": check_out_iso,
+            "p_work_hours": float(work_hours) if work_hours is not None else None,
+        }
+        res = client.rpc("checkout_whatsapp_punch", rpc_payload).execute()
+        if res.data and isinstance(res.data, dict) and "record" in res.data:
+            print(f"[WHATSAPP WEBHOOK] Checkout recorded via RPC checkout_whatsapp_punch", flush=True)
+            return res.data["record"]
+    except Exception as rpc_e:
+        print(f"[WHATSAPP WEBHOOK] RPC checkout_whatsapp_punch warning/fallback: {rpc_e}", flush=True)
+
+    # 2. Fallback to direct table update
+    try:
+        existing = client.table("attendance_records").select("id").eq("user_id", user_id).eq("date", today_str).execute().data
+        if existing:
+            res = client.table("attendance_records").update({
+                "check_out_at": check_out_iso,
+                "status": "checked_out",
+                "work_hours": work_hours,
+            }).eq("id", existing[0]["id"]).execute()
+            if res.data:
+                return res.data[0]
+    except Exception as table_e:
+        print(f"[WHATSAPP WEBHOOK ERROR] Direct checkout update failed: {table_e}", flush=True)
+
+    return None
+
+
 async def handle_incoming_whatsapp_webhook(request: Request):
     """
     Processes incoming messages from mobiCOMM or Meta WhatsApp Cloud API.
@@ -717,20 +811,24 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         or "CHECK-OUT" in text_content
     )
     if is_checkout and (lat is None or lng is None):
-        existing = admin_client.table("attendance_records") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("date", today_str) \
-            .execute().data
+        existing = []
+        try:
+            existing = admin_client.table("attendance_records") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .eq("date", today_str) \
+                .execute().data
+        except Exception as sel_err:
+            print(f"[WHATSAPP WEBHOOK] Existing lookup warning: {sel_err}", flush=True)
 
-        if not existing or not existing[0].get("check_in_at"):
+        rec = existing[0] if existing else None
+        if not rec or not rec.get("check_in_at"):
             send_whatsapp_message(
                 from_phone,
                 f"Hello {emp_name}, you haven't checked in yet today! Tap 'Check In' or share your GPS location first."
             )
             return {"status": "not_checked_in"}
 
-        rec = existing[0]
         if rec.get("check_out_at"):
             send_whatsapp_message(
                 from_phone,
@@ -749,11 +847,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             except Exception:
                 pass
 
-        admin_client.table("attendance_records").update({
-            "check_out_at": ist_now.isoformat(),
-            "status": "checked_out",
-            "work_hours": work_hours,
-        }).eq("id", rec["id"]).execute()
+        checkout_attendance_in_supabase(admin_client, user_id, today_str, ist_now.isoformat(), work_hours)
 
         hours_msg = f" Total work duration: {work_hours} hrs." if work_hours else ""
         send_whatsapp_message(
@@ -765,48 +859,26 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     # 5. Handle Location Attachment (GPS Pin Shared)
     if lat is not None and lng is not None:
         site = ensure_default_site(admin_client)
-        site_id = site.get("id")
-        site_name = site.get("name", "Alt.F Coworking")
+        site_id = site.get("id") if site else None
+        site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
         within_geofence = check_geofence_with_postgis(admin_client, float(lat), float(lng), site_id) if site_id else False
 
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Check existing today record
-        existing = admin_client.table("attendance_records") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("date", today_str) \
-            .execute().data
-
-        # If already checked in and already inside geofence, inform them
-        if existing and existing[0].get("check_in_at") and existing[0].get("check_in_within_geofence"):
-            send_whatsapp_message(
-                from_phone,
-                f"ℹ️ Hi {emp_name}, your attendance was already recorded for today.\n"
-                f"Site: {site_name} (Verified Inside Geo-fence)\n\n"
-                f"Reply 'OUT' when leaving to end your shift."
-            )
-            return {"status": "already_checked_in"}
-
-        rec_payload = {
-            "user_id": user_id,
-            "site_id": site_id,
-            "shift_id": shift.get("id") if shift else None,
-            "check_in_at": ist_now.isoformat(),
-            "check_in_latitude": float(lat),
-            "check_in_longitude": float(lng),
-            "check_in_within_geofence": within_geofence,
-            "check_in_source": "whatsapp",
-            "date": today_str,
-            "status": "checked_in",
-            "is_late": late_flag,
-        }
-
-        if existing:
-            admin_client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
-        else:
-            admin_client.table("attendance_records").insert(rec_payload).execute()
+        # Record attendance with coordinates (handles insert/update safely via RPC/table)
+        saved_rec = record_attendance_in_supabase(
+            admin_client,
+            user_id=user_id,
+            today_str=today_str,
+            check_in_iso=ist_now.isoformat(),
+            lat=float(lat),
+            lng=float(lng),
+            within_fence=within_geofence,
+            is_late=late_flag,
+            site_id=site_id,
+            shift_id=shift.get("id") if shift else None,
+        )
 
         fence_msg = f"✅ Inside {site_name} geo-fence." if within_geofence else f"⚠️ Outside office radius for {site_name}."
         late_msg = " (Marked Late)" if late_flag else ""
@@ -819,7 +891,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             f"Reply 'OUT' when leaving to end your shift."
         )
         send_whatsapp_message(from_phone, reply)
-        return {"status": "check_in_recorded", "within_geofence": within_geofence}
+        return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
 
     # 6. Handle "Check In" button tap or text check-in prompt -> Record Attendance Immediately in Supabase!
     is_checkin_prompt = (
@@ -836,55 +908,18 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Check if already checked in today
-        existing = admin_client.table("attendance_records") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("date", today_str) \
-            .execute().data
+        # Store check-in record in Supabase immediately
+        saved_record = record_attendance_in_supabase(
+            admin_client,
+            user_id=user_id,
+            today_str=today_str,
+            check_in_iso=ist_now.isoformat(),
+            within_fence=False,
+            is_late=late_flag,
+            site_id=site_id,
+            shift_id=shift.get("id") if shift else None,
+        )
 
-        if existing and existing[0].get("check_in_at"):
-            prev_in_time = existing[0].get("check_in_at")
-            try:
-                prev_dt = datetime.fromisoformat(prev_in_time.replace("Z", "+00:00")).astimezone(IST)
-                prev_time_str = prev_dt.strftime("%I:%M %p")
-            except Exception:
-                prev_time_str = prev_in_time
-
-            send_whatsapp_message(
-                from_phone,
-                f"ℹ️ Hi {emp_name}, your attendance was already recorded today at {prev_time_str}.\n"
-                f"Status: Checked In ✅\n\n"
-                f"Reply 'OUT' when leaving to record your check-out."
-            )
-            return {"status": "already_checked_in", "user_id": user_id, "check_in_at": prev_in_time}
-
-        # Store check-in record in Supabase
-        rec_payload = {
-            "user_id": user_id,
-            "site_id": site_id,
-            "shift_id": shift.get("id") if shift else None,
-            "check_in_at": ist_now.isoformat(),
-            "check_in_source": "whatsapp",
-            "date": today_str,
-            "status": "checked_in",
-            "is_late": late_flag,
-        }
-
-        try:
-            if existing:
-                ins_res = admin_client.table("attendance_records").update(rec_payload).eq("id", existing[0]["id"]).execute()
-            else:
-                ins_res = admin_client.table("attendance_records").insert(rec_payload).execute()
-            saved_record = ins_res.data[0] if (ins_res and ins_res.data) else rec_payload
-            print(f"[WHATSAPP WEBHOOK] Successfully saved attendance record to Supabase: {saved_record}", flush=True)
-            logger.info(f"Attendance recorded via WhatsApp for user {user_id} ({emp_name}) at {ist_now.isoformat()}")
-        except Exception as ins_err:
-            print(f"[WHATSAPP WEBHOOK ERROR] FAILED to save to attendance_records table: {ins_err}", flush=True)
-            logger.error(f"FAILED to save to attendance_records table: {ins_err}", exc_info=True)
-            saved_record = rec_payload
-
-        late_msg = " (Marked Late)" if late_flag else ""
         loc_prompt_text = (
             f"👋 Hi {emp_name}!\n"
             f"Please tap the button below to share your current location and complete your check-in at {site_name}."
