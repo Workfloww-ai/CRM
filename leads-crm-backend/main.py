@@ -264,15 +264,19 @@ def get_leads(
     assigned_to_me: Optional[bool] = False,
     user=Depends(require_crm_access)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "org", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "org":
-        db_sort_by = "org"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("org", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -874,12 +878,18 @@ def get_investors(
     sort_dir: Optional[str] = None,
     user=Depends(require_super_admin)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "company", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("company", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     response = get_investors_page(client, page, page_size, search, db_sort_by, sort_desc)
@@ -1085,12 +1095,18 @@ def get_fractional_leaders(
     assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "domain", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("domain", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -1305,12 +1321,18 @@ def get_training_partners(
     assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "organization", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("organization", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -1712,8 +1734,12 @@ def get_competitors(
     sort_desc: Optional[bool] = True,
     user=Depends(get_current_user)
 ):
+    ALLOWED_SORT_FIELDS = {"name", "website", "status", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+
     client = get_client_for_user(user.token)
-    db_sort_by = "created_at" if sort_by not in ["name", "website", "status"] else sort_by
+    db_sort_by = sort_by or "created_at"
     response = get_competitors_page(client, page, page_size, search, db_sort_by, sort_desc)
     return {"data": response.data, "total": response.count}
 
