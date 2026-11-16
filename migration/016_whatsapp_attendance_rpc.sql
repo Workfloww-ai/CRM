@@ -97,3 +97,4 @@ end;
 $$;
 
 grant execute on function record_whatsapp_punch(uuid, date, timestamptz, double precision, double precision, boolean, boolean, uuid) to anon, authenticated, service_role;
+
