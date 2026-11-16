@@ -8,13 +8,15 @@ from email.mime.text import MIMEText
 def send_welcome_credentials_email(
     to_email: str,
     full_name: str,
-    default_password: str = "workfloww@2026",
+    default_password: str = None,
+    temporary_password: str = None,
     app_url: str = None
 ) -> bool:
     """
     Sends welcome credentials email to newly added team members.
     Supports SMTP, Resend API, and logs to console.
     """
+    password = temporary_password or default_password or os.environ.get("DEFAULT_USER_PASSWORD", "")
     if not app_url:
         app_url = os.environ.get("FLOWWIES_APP_URL", "http://localhost:3000")
 
@@ -28,7 +30,7 @@ Your team account has been provisioned. Please log in using the credentials belo
 
 - Login URL: {app_url}
 - Username (Work Email): {to_email}
-- Default Password: {default_password}
+- Temporary Password: {password}
 
 Security Notice: On your first login, Flowwies will prompt you to change your password before you can access the dashboard.
 
@@ -75,7 +77,7 @@ Flowwies Team
           </div>
           <div class="row" style="margin-top: 10px;">
             <span class="label">Temporary Password:</span><br>
-            <span class="val">{default_password}</span>
+            <span class="val">{password}</span>
           </div>
         </div>
 
@@ -101,7 +103,7 @@ Flowwies Team
     print(f"Subject:   {subject}")
     print(f"Portal:    {app_url}")
     print(f"Username:  {to_email}")
-    print(f"Password:  {default_password}")
+    print(f"Password:  {password}")
     print("Security:  Mandatory password change enforced on first login")
     print("=" * 70)
 

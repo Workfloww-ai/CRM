@@ -133,9 +133,15 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    traceback.print_exc()
-    return JSONResponse(status_code=500, content={'detail': str(exc)}, headers={'Access-Control-Allow-Origin': '*'})
+    import logging
+    import uuid
+    error_id = str(uuid.uuid4())[:8]
+    logging.getLogger("app").error(f"Unhandled error [{error_id}]: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred.", "error_id": error_id},
+        headers={'Access-Control-Allow-Origin': '*'}
+    )
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 allowed_origins = [
@@ -258,15 +264,19 @@ def get_leads(
     assigned_to_me: Optional[bool] = False,
     user=Depends(require_crm_access)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "org", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "org":
-        db_sort_by = "org"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("org", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -463,6 +473,25 @@ def export_leads(request: Request, export_type: Optional[str] = None, user=Depen
         "status": "status"
     }
 
+def sanitize_csv_cell(value):
+    """
+    Prevents CSV / Formula Injection (CWE-1236 / OWASP).
+    If a string starts with formula-triggering characters (=, +, -, @, \t, \r),
+    prepends a single quote "'" to neutralize spreadsheet formula evaluation.
+    """
+    if value is None:
+        return ""
+    val_str = str(value)
+    if val_str and val_str[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{val_str}"
+    return val_str
+
+
+def sanitize_csv_row(row: dict) -> dict:
+    """Sanitizes all string fields in a dictionary row before CSV export."""
+    return {k: sanitize_csv_cell(v) for k, v in row.items()}
+
+
     output = io.StringIO()
     if export_type:
         types = [t.strip() for t in export_type.split(',')]
@@ -483,17 +512,19 @@ def export_leads(request: Request, export_type: Optional[str] = None, user=Depen
                 }
                 for field in selected_fields:
                     row[field] = lead.get(field, "")
-                writer.writerow(row)
+                writer.writerow(sanitize_csv_row(row))
         else:
             writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
             writer.writeheader()
             for lead in leads:
-                writer.writerow({k: lead.get(k, "") for k in writer.fieldnames})
+                raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
+                writer.writerow(sanitize_csv_row(raw_row))
     else:
         writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
         writer.writeheader()
         for lead in leads:
-            writer.writerow({k: lead.get(k, "") for k in writer.fieldnames})
+            raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
+            writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -719,9 +750,40 @@ def list_attachments(lead_id: str, user=Depends(get_current_user)):
 def download_attachment(attachment_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     record = get_attachment(client, attachment_id)
-    storage_path = record.data["storage_path"]
+    if not record or not record.data:
+        raise HTTPException(status_code=404, detail="Attachment not found")
 
-    signed_url = get_signed_attachment_url(client, storage_path, download=record.data.get("file_name"))
+    attachment = record.data
+    is_uploader = attachment.get("uploaded_by") == user.id
+
+    # Verify authorization: uploader, CRM users, or managers/admins can access
+    is_admin = False
+    has_crm_access = False
+    try:
+        prof = client.table("profiles").select(
+            "role_level, hrms_role, department, secondary_department, can_access_crm"
+        ).eq("id", user.id).single().execute()
+        if prof and prof.data:
+            p = prof.data
+            role_level = p.get("role_level") or 0
+            hrms_role = (p.get("hrms_role") or "").lower()
+            dept = (p.get("department") or "").lower()
+            sec_dept = (p.get("secondary_department") or "").lower()
+            can_access = bool(p.get("can_access_crm"))
+
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+            has_crm_access = is_admin or can_access or dept == "growth" or sec_dept == "growth"
+    except Exception:
+        pass
+
+    if not (is_uploader or has_crm_access):
+        raise HTTPException(status_code=403, detail="You do not have permission to access this attachment")
+
+    storage_path = attachment.get("storage_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Storage path not found")
+
+    signed_url = get_signed_attachment_url(client, storage_path, download=attachment.get("file_name"))
     
     # Handle both string and dict responses from Supabase python client
     url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
@@ -733,9 +795,29 @@ def download_attachment(attachment_id: str, user=Depends(get_current_user)):
 def delete_attachment(attachment_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     record = get_attachment(client, attachment_id)
-    storage_path = record.data["storage_path"]
+    if not record or not record.data:
+        raise HTTPException(status_code=404, detail="Attachment not found")
 
-    delete_file_from_storage(client, storage_path)
+    attachment = record.data
+    is_uploader = attachment.get("uploaded_by") == user.id
+
+    # Only uploader or admin/manager can delete
+    is_admin = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+    except Exception:
+        pass
+
+    if not (is_uploader or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this attachment")
+
+    storage_path = attachment.get("storage_path")
+    if storage_path:
+        delete_file_from_storage(client, storage_path)
     delete_attachment_record(client, attachment_id)
 
     return {"deleted": True}
@@ -796,12 +878,18 @@ def get_investors(
     sort_dir: Optional[str] = None,
     user=Depends(require_super_admin)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "company", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("company", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     response = get_investors_page(client, page, page_size, search, db_sort_by, sort_desc)
@@ -844,7 +932,8 @@ def export_investors(request: Request, user=Depends(require_super_admin)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1006,12 +1095,18 @@ def get_fractional_leaders(
     assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "domain", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("domain", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -1063,7 +1158,8 @@ def export_fractional_leaders(request: Request, user=Depends(get_current_user)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1225,12 +1321,18 @@ def get_training_partners(
     assigned_to_me: Optional[bool] = False,
     user=Depends(get_current_user)
 ):
-    sort_desc = sort_dir == "desc" if sort_dir else False
+    ALLOWED_SORT_FIELDS = {"name", "first_name", "organization", "status", "due_date", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+    if sort_dir and sort_dir.lower() not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
+
+    sort_desc = sort_dir.lower() == "desc" if sort_dir else False
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
-    elif sort_by == "status":
-        db_sort_by = "status"
+    elif sort_by in ("organization", "status", "first_name", "due_date", "created_at"):
+        db_sort_by = sort_by
 
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
@@ -1279,7 +1381,8 @@ def export_training_partners(request: Request, user=Depends(get_current_user)):
     writer = csv.DictWriter(output, fieldnames=['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency'])
     writer.writeheader()
     for row in data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
     return StreamingResponse(
@@ -1631,8 +1734,12 @@ def get_competitors(
     sort_desc: Optional[bool] = True,
     user=Depends(get_current_user)
 ):
+    ALLOWED_SORT_FIELDS = {"name", "website", "status", "created_at"}
+    if sort_by and sort_by not in ALLOWED_SORT_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sort_by}")
+
     client = get_client_for_user(user.token)
-    db_sort_by = "created_at" if sort_by not in ["name", "website", "status"] else sort_by
+    db_sort_by = sort_by or "created_at"
     response = get_competitors_page(client, page, page_size, search, db_sort_by, sort_desc)
     return {"data": response.data, "total": response.count}
 
@@ -1665,7 +1772,8 @@ def export_competitors(request: Request, user=Depends(require_super_admin)):
     writer = csv.DictWriter(output, fieldnames=["id", "name", "website", "status", "created_at"])
     writer.writeheader()
     for row in response.data:
-        writer.writerow({k: row.get(k, "") for k in writer.fieldnames})
+        raw_row = {k: row.get(k, "") for k in writer.fieldnames}
+        writer.writerow(sanitize_csv_row(raw_row))
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
@@ -1801,6 +1909,8 @@ def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=
 def download_document(doc_id: str, preview: bool = False, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     doc = get_document(client, doc_id)
+    if not doc or not doc.data:
+        raise HTTPException(status_code=404, detail="Document not found")
     storage_path = doc.data["storage_path"]
     download_name = None if preview else doc.data.get("file_name")
     signed_url = get_signed_document_url(client, storage_path, expires_in=3600, download=download_name)
@@ -1812,8 +1922,26 @@ def download_document(doc_id: str, preview: bool = False, user=Depends(get_curre
 def delete_document(doc_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     doc = get_document(client, doc_id)
+    if not doc or not doc.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    is_uploader = doc.data.get("uploaded_by") == user.id
+    is_admin = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+    except Exception:
+        pass
+
+    if not (is_uploader or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this document")
+
     storage_path = doc.data["storage_path"]
-    delete_document_from_storage(client, storage_path)
+    if storage_path:
+        delete_document_from_storage(client, storage_path)
     delete_document_record(client, doc_id)
     return {"status": "ok"}
 

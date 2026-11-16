@@ -332,22 +332,13 @@ export default function FlowwiesApp() {
       const isMgr =
         m.role === "manager" ||
         m.hrms_role === "manager" ||
-        (m.role_level && m.role_level >= 1) ||
-        m.email?.toLowerCase().includes("shilpa") ||
-        m.email?.toLowerCase().includes("manish");
+        (m.role_level && m.role_level >= 1);
 
       if (isMgr && m.full_name && !seen.has(m.full_name.toLowerCase())) {
         seen.add(m.full_name.toLowerCase());
         list.push({ id: m.id, name: m.full_name });
       }
     });
-
-    if (!Array.from(seen).some((n) => n.includes("shilpa"))) {
-      list.push({ id: "shilpa", name: "Shilpa Chitkara" });
-    }
-    if (!Array.from(seen).some((n) => n.includes("manish"))) {
-      list.push({ id: "manish", name: "Manish Chum" });
-    }
 
     return list;
   }, [teamMembers]);
@@ -1572,19 +1563,6 @@ export default function FlowwiesApp() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detail || "Failed to add person.");
-      }
-
-      // Also ensure user is registered in Supabase Auth with default password
-      try {
-        await supabase.auth.signUp({
-          email: addPersonForm.email.trim().toLowerCase(),
-          password: "workfloww@2026",
-          options: {
-            data: { full_name: addPersonForm.full_name.trim() }
-          }
-        });
-      } catch (authErr) {
-        console.warn("Client auth sign_up notice:", authErr);
       }
 
       showNotification(data.message || "Team member added successfully!");
@@ -3219,7 +3197,7 @@ export default function FlowwiesApp() {
                       onChange={(e) => setNewClaimManager(e.target.value)}
                       className="flow-field"
                     >
-                      <option value="Both">Both (Shilpa &amp; Manish)</option>
+                      <option value="Both">Both (All Managers)</option>
                       {availableManagers.map((m) => (
                         <option key={m.id} value={m.name}>
                           {m.name}
@@ -3304,7 +3282,7 @@ export default function FlowwiesApp() {
                                 <p className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
                                   <span>{c.profiles?.full_name} · {c.claim_date}</span>
                                   <span className="font-semibold text-[var(--v)] bg-[var(--vt2)] px-2 py-0.5 rounded-full text-[11px]">
-                                    Approver: {c.target_manager || "Both (Shilpa & Manish)"}
+                                    Approver: {c.target_manager || "All Managers"}
                                   </span>
                                   {c.receipt_file_name ? (
                                     <button
@@ -3376,7 +3354,7 @@ export default function FlowwiesApp() {
                               <p className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
                                 <span>{c.claim_date}</span>
                                 <span className="font-semibold text-[var(--v)] bg-[var(--vt2)] px-2 py-0.5 rounded-full text-[11px]">
-                                  Approver: {c.target_manager || "Both (Shilpa & Manish)"}
+                                  Approver: {c.target_manager || "All Managers"}
                                 </span>
                                 {c.receipt_file_name ? (
                                   <button
@@ -3989,7 +3967,7 @@ export default function FlowwiesApp() {
                       </button>
                     </form>
                     <p className="text-xs text-[var(--muted)] mt-3">
-                      Routes directly to leadership (Shilpa &amp; Manish).
+                      Routes directly to managers &amp; leadership.
                     </p>
                   </div>
 

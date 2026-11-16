@@ -104,9 +104,7 @@ def get_my_hrms_profile(user=Depends(get_current_user)):
 
     is_manager = (
         (p.get("role_level") or 0) >= 1
-        or (p.get("hrms_role") or "").lower() == "manager"
-        or p.get("email", "").lower().startswith("manish")
-        or p.get("email", "").lower().startswith("shilpa")
+        or (p.get("hrms_role") or "").lower() in ("manager", "admin")
     )
     is_growth = any(d.lower() == "growth" for d in dept_names) or bool(p.get("can_access_crm")) or is_manager
 
@@ -142,9 +140,7 @@ def update_my_profile(body: ProfileSelfUpdate, user=Depends(get_current_user)):
     user_email = (getattr(user, "email", "") or "").lower()
     is_mgr = (
         (prof_data.get("role_level") or 0) >= 1
-        or (prof_data.get("hrms_role") or "").lower() == "manager"
-        or user_email.startswith("manish")
-        or user_email.startswith("shilpa")
+        or (prof_data.get("hrms_role") or "").lower() in ("manager", "admin")
     )
     if not is_mgr:
         # Email cannot be edited by employees, but phone can be updated for WhatsApp check-in
@@ -185,6 +181,27 @@ def get_team(user=Depends(get_current_user)):
         if dname:
             pd_map.setdefault(pid, []).append(dname)
 
+    # Determine caller privileges for DPDP / GDPR data privacy compliance
+    caller_is_manager = False
+    try:
+        caller_prof = client.table("profiles").select("role_level, hrms_role, email").eq("id", user.id).single().execute()
+        if caller_prof and caller_prof.data:
+            cp = caller_prof.data
+            role_level = cp.get("role_level") or 0
+            hrms_role = (cp.get("hrms_role") or "").lower()
+            email = (cp.get("email") or "").lower()
+            if role_level >= 1 or hrms_role in ("manager", "admin"):
+                caller_is_manager = True
+    except Exception:
+        caller_is_manager = False
+
+    sensitive_fields = (
+        "bank_account_holder", "bank_name", "bank_account_number",
+        "ifsc_code", "upi_id", "address", "city", "state", "pin_code",
+        "personal_email", "emergency_contact_name", "emergency_contact_phone",
+        "dob", "phone",
+    )
+
     for m in members:
         pid = m["id"]
         depts = pd_map.get(pid, [])
@@ -194,13 +211,16 @@ def get_team(user=Depends(get_current_user)):
         m["departments"] = list(set(depts))
         is_mgr = (
             (m.get("role_level") or 0) >= 1
-            or (m.get("hrms_role") or "").lower() == "manager"
-            or m.get("email", "").lower().startswith("manish")
-            or m.get("email", "").lower().startswith("shilpa")
+            or (m.get("hrms_role") or "").lower() in ("manager", "admin")
         )
         m["role"] = "manager" if is_mgr else "employee"
         m["hrms_role"] = m["role"]
         m["can_access_crm"] = any(d.lower() == "growth" for d in depts) or bool(m.get("can_access_crm")) or is_mgr
+
+        # Redact sensitive financial and personal PII for non-manager callers viewing other members
+        if not caller_is_manager and pid != user.id:
+            for field in sensitive_fields:
+                m[field] = None
 
     return members
 
@@ -267,6 +287,26 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
     return {"status": "updated", "data": update_data}
 
 
+def generate_temporary_password(length: int = 12) -> str:
+    """Generates a secure random temporary password for newly provisioned accounts."""
+    import secrets
+    import string
+    chars_lower = string.ascii_lowercase
+    chars_upper = string.ascii_uppercase
+    chars_digits = string.digits
+    chars_special = "!@#$%"
+    all_chars = chars_lower + chars_upper + chars_digits + chars_special
+    pwd = [
+        secrets.choice(chars_lower),
+        secrets.choice(chars_upper),
+        secrets.choice(chars_digits),
+        secrets.choice(chars_special)
+    ]
+    pwd += [secrets.choice(all_chars) for _ in range(length - 4)]
+    secrets.SystemRandom().shuffle(pwd)
+    return "".join(pwd)
+
+
 @router.post("/team")
 def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager)):
     import uuid
@@ -300,8 +340,14 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         client.table("profiles").update(upd).eq("id", member_id).execute()
         return {"status": "updated", "id": member_id, "message": "Updated existing team member."}
 
-    # Create new profile
-    DEFAULT_PASSWORD = "workfloww@2026"
+    # Generate a random temporary password for newly provisioned user
+    configured_pwd = (
+        os.environ.get("DEFAULT_USER_PASSWORD")
+        or os.environ.get("DEFAULT_EMPLOYEE_PASSWORD")
+        or ""
+    ).strip()
+    temporary_password = configured_pwd if configured_pwd else generate_temporary_password()
+
     from db.client import supabase_anon
     from services.email import send_welcome_credentials_email
 
@@ -323,7 +369,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             "new_full_name": clean_name,
             "new_role": clean_role,
             "new_department": primary_d,
-            "new_password": DEFAULT_PASSWORD
+            "new_password": temporary_password
         }).execute()
         if rpc_res.data:
             created_id = str(rpc_res.data)
@@ -349,7 +395,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             try:
                 auth_res = supabase_anon.auth.sign_up({
                     "email": clean_email,
-                    "password": DEFAULT_PASSWORD,
+                    "password": temporary_password,
                     "options": {
                         "data": {
                             "full_name": clean_name
@@ -430,7 +476,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         send_welcome_credentials_email(
             to_email=clean_email,
             full_name=clean_name,
-            default_password=DEFAULT_PASSWORD
+            temporary_password=temporary_password
         )
     except Exception as mail_err:
         print("Notice: email sending error:", mail_err)
@@ -438,7 +484,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
     return {
         "status": "created",
         "id": created_id,
-        "message": f"Team member created! Login credentials sent to {clean_email} (Default password: {DEFAULT_PASSWORD})."
+        "message": f"Team member created successfully! Login credentials have been sent to {clean_email}."
     }
 
 
@@ -812,9 +858,7 @@ def list_reimbursement_approvals(user=Depends(require_hrms_manager_or_admin)):
             matches_manager = True
         elif my_name and (my_name in target_mgr or any(part in target_mgr for part in my_name.split() if len(part) > 2)):
             matches_manager = True
-        elif "shilpa" in target_mgr and "shilpa" in my_email:
-            matches_manager = True
-        elif "manish" in target_mgr and "manish" in my_email:
+        elif is_admin:
             matches_manager = True
 
         if is_admin:
@@ -865,10 +909,29 @@ def upload_reimbursement_receipt(file: UploadFile = File(...), user=Depends(get_
 def get_reimbursement_receipt(claim_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     claim = client.table("reimbursement_claims").select("*").eq("id", claim_id).single().execute()
-    if not claim.data:
+    if not claim or not claim.data:
         raise HTTPException(status_code=404, detail="Claim not found")
 
-    storage_path = claim.data.get("receipt_storage_path")
+    claim_data = claim.data
+    is_owner = claim_data.get("user_id") == user.id
+
+    # Verify authorization: only the claimant or HR managers/admins can access receipt
+    is_mgr = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role, email").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            email = (prof.data.get("email") or "").lower()
+            if role_level >= 1 or hrms_role in ("manager", "admin"):
+                is_mgr = True
+    except Exception:
+        pass
+
+    if not (is_owner or is_mgr):
+        raise HTTPException(status_code=403, detail="You do not have permission to view this reimbursement receipt")
+
+    storage_path = claim_data.get("receipt_storage_path")
     if not storage_path:
         raise HTTPException(status_code=404, detail="No receipt stored for this claim")
 
