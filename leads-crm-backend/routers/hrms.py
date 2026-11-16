@@ -104,9 +104,7 @@ def get_my_hrms_profile(user=Depends(get_current_user)):
 
     is_manager = (
         (p.get("role_level") or 0) >= 1
-        or (p.get("hrms_role") or "").lower() == "manager"
-        or p.get("email", "").lower().startswith("manish")
-        or p.get("email", "").lower().startswith("shilpa")
+        or (p.get("hrms_role") or "").lower() in ("manager", "admin")
     )
     is_growth = any(d.lower() == "growth" for d in dept_names) or bool(p.get("can_access_crm")) or is_manager
 
@@ -142,9 +140,7 @@ def update_my_profile(body: ProfileSelfUpdate, user=Depends(get_current_user)):
     user_email = (getattr(user, "email", "") or "").lower()
     is_mgr = (
         (prof_data.get("role_level") or 0) >= 1
-        or (prof_data.get("hrms_role") or "").lower() == "manager"
-        or user_email.startswith("manish")
-        or user_email.startswith("shilpa")
+        or (prof_data.get("hrms_role") or "").lower() in ("manager", "admin")
     )
     if not is_mgr:
         # Email cannot be edited by employees, but phone can be updated for WhatsApp check-in
@@ -194,12 +190,7 @@ def get_team(user=Depends(get_current_user)):
             role_level = cp.get("role_level") or 0
             hrms_role = (cp.get("hrms_role") or "").lower()
             email = (cp.get("email") or "").lower()
-            if (
-                role_level >= 1
-                or hrms_role in ("manager", "admin")
-                or email.startswith("manish")
-                or email.startswith("shilpa")
-            ):
+            if role_level >= 1 or hrms_role in ("manager", "admin"):
                 caller_is_manager = True
     except Exception:
         caller_is_manager = False
@@ -220,9 +211,7 @@ def get_team(user=Depends(get_current_user)):
         m["departments"] = list(set(depts))
         is_mgr = (
             (m.get("role_level") or 0) >= 1
-            or (m.get("hrms_role") or "").lower() == "manager"
-            or m.get("email", "").lower().startswith("manish")
-            or m.get("email", "").lower().startswith("shilpa")
+            or (m.get("hrms_role") or "").lower() in ("manager", "admin")
         )
         m["role"] = "manager" if is_mgr else "employee"
         m["hrms_role"] = m["role"]
@@ -869,9 +858,7 @@ def list_reimbursement_approvals(user=Depends(require_hrms_manager_or_admin)):
             matches_manager = True
         elif my_name and (my_name in target_mgr or any(part in target_mgr for part in my_name.split() if len(part) > 2)):
             matches_manager = True
-        elif "shilpa" in target_mgr and "shilpa" in my_email:
-            matches_manager = True
-        elif "manish" in target_mgr and "manish" in my_email:
+        elif is_admin:
             matches_manager = True
 
         if is_admin:
@@ -936,12 +923,7 @@ def get_reimbursement_receipt(claim_id: str, user=Depends(get_current_user)):
             role_level = prof.data.get("role_level") or 0
             hrms_role = (prof.data.get("hrms_role") or "").lower()
             email = (prof.data.get("email") or "").lower()
-            if (
-                role_level >= 1
-                or hrms_role in ("manager", "admin")
-                or email.startswith("manish")
-                or email.startswith("shilpa")
-            ):
+            if role_level >= 1 or hrms_role in ("manager", "admin"):
                 is_mgr = True
     except Exception:
         pass
