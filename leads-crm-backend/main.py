@@ -187,6 +187,41 @@ async def root_whatsapp_webhook_incoming(request: Request):
     return await handle_incoming_whatsapp_webhook(request)
 
 
+# =============================================================================
+# AUTOMATED 6:00 PM CHECK-OUT REMINDER SCHEDULER (IST)
+# =============================================================================
+_checkout_cron_last_run_date = None
+
+async def attendance_checkout_scheduler_loop():
+    global _checkout_cron_last_run_date
+    import asyncio
+    from datetime import datetime, timezone, timedelta
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    while True:
+        try:
+            await asyncio.sleep(30)
+            now_ist = datetime.now(IST)
+            today_str = now_ist.strftime("%Y-%m-%d")
+
+            # Fire automatically at 18:00 IST (6:00 PM)
+            if now_ist.hour == 18 and now_ist.minute in (0, 1, 2) and _checkout_cron_last_run_date != today_str:
+                _checkout_cron_last_run_date = today_str
+                print(f"[ATTENDANCE SCHEDULER] 6:00 PM IST reached! Triggering automated checkout reminders for {today_str}...", flush=True)
+                from routers.attendance import dispatch_daily_checkout_reminders
+                res = dispatch_daily_checkout_reminders()
+                print(f"[ATTENDANCE SCHEDULER] Checkout reminder completed: {res}", flush=True)
+        except Exception as sched_err:
+            print(f"[ATTENDANCE SCHEDULER ERROR] {sched_err}", flush=True)
+
+
+@app.on_event("startup")
+async def start_attendance_checkout_scheduler():
+    import asyncio
+    asyncio.create_task(attendance_checkout_scheduler_loop())
+
+
+
 def sanitize_filename(filename: str) -> str:
     filename = filename.replace("/", "").replace("\\", "")
     filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)

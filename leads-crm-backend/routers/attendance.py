@@ -24,6 +24,7 @@ from services.whatsapp import (
     verify_meta_signature,
     send_whatsapp_message,
     send_location_request_message,
+    send_checkout_reminder_message,
     send_checkin_reminder_template,
     normalize_phone,
     extract_whatsapp_message,
@@ -914,10 +915,11 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
     # 4. Handle "OUT" or "CHECKOUT" (only when coordinates are not sent)
     is_checkout = (
-        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT")
+        text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT")
         or "CHECK OUT" in text_content
         or "CHECKOUT" in text_content
         or "CHECK-OUT" in text_content
+        or "BTN_CHECKOUT" in text_content
     )
     if is_checkout and (lat is None or lng is None):
         existing = []
@@ -939,31 +941,33 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             return {"status": "not_checked_in"}
 
         if rec.get("check_out_at"):
+            prev_out = rec.get("check_out_at")
+            try:
+                out_dt = datetime.fromisoformat(prev_out.replace("Z", "+00:00")).astimezone(IST)
+                out_str = out_dt.strftime("%I:%M %p")
+            except Exception:
+                out_str = prev_out
             send_whatsapp_message(
                 from_phone,
-                f"Hello {emp_name}, you have already checked out today at {rec.get('check_out_at')}."
+                f"Hello {emp_name}, you have already checked out today at {out_str}.\nHave a wonderful evening! 🌟"
             )
             return {"status": "already_checked_out"}
 
-        # Calculate work hours
-        work_hours = None
-        in_time_str = rec.get("check_in_at")
-        if in_time_str:
-            try:
-                in_dt = datetime.fromisoformat(in_time_str.replace("Z", "+00:00"))
-                diff_sec = (ist_now.astimezone(timezone.utc) - in_dt.astimezone(timezone.utc)).total_seconds()
-                work_hours = round(max(0.0, diff_sec / 3600.0), 2)
-            except Exception:
-                pass
+        # Mark that check-out location verification is requested
+        try:
+            admin_client.table("attendance_records").update({"notes": "checkout_requested"}).eq("id", rec["id"]).execute()
+        except Exception as upd_err:
+            print(f"[WHATSAPP WEBHOOK] Could not set checkout_requested note: {upd_err}", flush=True)
 
-        checkout_attendance_in_supabase(admin_client, user_id, today_str, ist_now.isoformat(), work_hours)
+        site = ensure_default_site(admin_client)
+        site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
 
-        hours_msg = f" Total work duration: {work_hours} hrs." if work_hours else ""
-        send_whatsapp_message(
-            from_phone,
-            f"👋 Goodbye {emp_name}! You have successfully checked out at {time_str}.{hours_msg}\nHave a wonderful evening!"
+        prompt_text = (
+            f"👋 Hi {emp_name}!\n\n"
+            f"Please tap the button below to share your current location and complete your check-out at {site_name}."
         )
-        return {"status": "checked_out"}
+        send_location_request_message(from_phone, prompt_text)
+        return {"status": "checkout_location_requested"}
 
     # 5. Handle Location Attachment (GPS Pin Shared)
     if lat is not None and lng is not None:
@@ -972,10 +976,70 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
         within_geofence = check_geofence_with_postgis(admin_client, float(lat), float(lng), site_id) if site_id else False
 
+        # Look up existing record for today
+        existing = []
+        try:
+            existing = admin_client.table("attendance_records") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .eq("date", today_str) \
+                .execute().data
+        except Exception as sel_e:
+            print(f"[WHATSAPP WEBHOOK] Location existing check error: {sel_e}", flush=True)
+
+        rec = existing[0] if existing else None
+
+        # Determine if this location is for CHECK-OUT:
+        is_checkout_location = False
+        if rec and rec.get("check_in_at") and not rec.get("check_out_at"):
+            # If user explicitly requested checkout OR already completed check-in location
+            if rec.get("notes") == "checkout_requested" or rec.get("check_in_latitude") is not None:
+                is_checkout_location = True
+
+        if is_checkout_location:
+            # Calculate work duration
+            work_hours = None
+            in_time_str = rec.get("check_in_at")
+            if in_time_str:
+                try:
+                    in_dt = datetime.fromisoformat(in_time_str.replace("Z", "+00:00"))
+                    diff_sec = (ist_now.astimezone(timezone.utc) - in_dt.astimezone(timezone.utc)).total_seconds()
+                    work_hours = round(max(0.0, diff_sec / 3600.0), 2)
+                except Exception:
+                    pass
+
+            upd_data = {
+                "check_out_at": ist_now.isoformat(),
+                "check_out_latitude": float(lat),
+                "check_out_longitude": float(lng),
+                "check_out_within_geofence": within_geofence,
+                "status": "checked_out",
+                "work_hours": work_hours,
+                "notes": None,
+            }
+            try:
+                admin_client.table("attendance_records").update(upd_data).eq("id", rec["id"]).execute()
+            except Exception as upd_e:
+                print(f"[WHATSAPP WEBHOOK ERROR] Checkout update failed: {upd_e}", flush=True)
+                checkout_attendance_in_supabase(admin_client, user_id, today_str, ist_now.isoformat(), work_hours)
+
+            fence_msg = f"✅ Inside {site_name} geo-fence." if within_geofence else f"⚠️ Outside office radius for {site_name}."
+            hours_str = f"*{work_hours} hours*" if work_hours is not None else "full shift"
+
+            reply = (
+                f"👋 Goodbye {emp_name}!\n\n"
+                f"✅ Check-out successfully recorded at {time_str}.\n"
+                f"⏱️ Total work duration: {hours_str} completed today.\n"
+                f"📍 Status: {fence_msg}\n\n"
+                f"Thank you for your hard work today! Have a wonderful evening and see you tomorrow! 🌟"
+            )
+            send_whatsapp_message(from_phone, reply)
+            return {"status": "checked_out", "work_hours": work_hours, "within_geofence": within_geofence}
+
+        # Otherwise, this location is for CHECK-IN:
         shift = get_default_shift(admin_client)
         late_flag = is_checkin_late(shift, ist_now)
 
-        # Record attendance with coordinates (handles insert/update safely via RPC/table)
         saved_rec = record_attendance_in_supabase(
             admin_client,
             user_id=user_id,
@@ -997,7 +1061,7 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             f"Attendance marked at {time_str}{late_msg}.\n"
             f"Site: {site_name}\n"
             f"Status: {fence_msg}\n\n"
-            f"Reply 'OUT' when leaving to end your shift."
+            f"Reply 'Check-Out' when leaving to end your shift."
         )
         send_whatsapp_message(from_phone, reply)
         return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
@@ -1113,4 +1177,90 @@ def trigger_checkin_reminder(
                 sent_count += 1
 
     return {"status": "success", "reminders_sent": sent_count, "date": date_str}
+
+
+def dispatch_daily_checkout_reminders(client=None) -> dict:
+    """
+    Finds all active employees who checked in today but haven't checked out yet,
+    and sends them the 6:00 PM Check-Out prompt on WhatsApp.
+    """
+    if not client:
+        client = get_admin_client() or supabase_anon
+
+    today_str = get_ist_today_str()
+    try:
+        records = client.table("attendance_records") \
+            .select("user_id, check_in_at, check_out_at, profiles(id, full_name, phone, is_active)") \
+            .eq("date", today_str) \
+            .not_.is_("check_in_at", "null") \
+            .is_("check_out_at", "null") \
+            .execute().data or []
+    except Exception as e:
+        logger.error(f"Error fetching checked-in employees for 6 PM reminder: {e}")
+        try:
+            records = client.table("attendance_records") \
+                .select("user_id, check_in_at, check_out_at") \
+                .eq("date", today_str) \
+                .execute().data or []
+            records = [r for r in records if r.get("check_in_at") and not r.get("check_out_at")]
+        except Exception:
+            records = []
+
+    sent_count = 0
+    errors = []
+
+    for r in records:
+        prof = r.get("profiles")
+        user_id = r.get("user_id")
+        if not prof and user_id:
+            try:
+                p_res = client.table("profiles").select("id, full_name, phone, is_active").eq("id", user_id).single().execute()
+                prof = p_res.data
+            except Exception:
+                pass
+
+        if not prof or prof.get("is_active") is False:
+            continue
+
+        phone = prof.get("phone")
+        name = prof.get("full_name") or "Team Member"
+        if not phone:
+            continue
+
+        try:
+            ok = send_checkout_reminder_message(phone, name)
+            if ok:
+                sent_count += 1
+                logger.info(f"6 PM Check-out reminder sent to {name} ({phone})")
+        except Exception as send_err:
+            errors.append(f"{name}: {send_err}")
+
+    return {
+        "status": "success",
+        "date": today_str,
+        "eligible_checked_in": len(records),
+        "reminders_sent": sent_count,
+        "errors": errors,
+    }
+
+
+@router.post("/send-checkout-reminder")
+def trigger_checkout_reminder(
+    user=Depends(require_hrms_manager_or_admin),
+):
+    """Manual trigger by manager or admin to dispatch 6 PM check-out reminders."""
+    client = get_client_for_user(user.token)
+    return dispatch_daily_checkout_reminders(client)
+
+
+@router.get("/cron/checkout-reminder")
+@router.post("/cron/checkout-reminder")
+def cron_checkout_reminder(request: Request):
+    """
+    Public cron / Cloud Scheduler webhook endpoint to trigger 6:00 PM check-out reminders.
+    Can be scheduled in Google Cloud Scheduler at 18:00 IST (12:30 UTC).
+    """
+    admin_client = get_admin_client() or supabase_anon
+    return dispatch_daily_checkout_reminders(admin_client)
+
 
