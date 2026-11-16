@@ -719,9 +719,40 @@ def list_attachments(lead_id: str, user=Depends(get_current_user)):
 def download_attachment(attachment_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     record = get_attachment(client, attachment_id)
-    storage_path = record.data["storage_path"]
+    if not record or not record.data:
+        raise HTTPException(status_code=404, detail="Attachment not found")
 
-    signed_url = get_signed_attachment_url(client, storage_path, download=record.data.get("file_name"))
+    attachment = record.data
+    is_uploader = attachment.get("uploaded_by") == user.id
+
+    # Verify authorization: uploader, CRM users, or managers/admins can access
+    is_admin = False
+    has_crm_access = False
+    try:
+        prof = client.table("profiles").select(
+            "role_level, hrms_role, department, secondary_department, can_access_crm"
+        ).eq("id", user.id).single().execute()
+        if prof and prof.data:
+            p = prof.data
+            role_level = p.get("role_level") or 0
+            hrms_role = (p.get("hrms_role") or "").lower()
+            dept = (p.get("department") or "").lower()
+            sec_dept = (p.get("secondary_department") or "").lower()
+            can_access = bool(p.get("can_access_crm"))
+
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+            has_crm_access = is_admin or can_access or dept == "growth" or sec_dept == "growth"
+    except Exception:
+        pass
+
+    if not (is_uploader or has_crm_access):
+        raise HTTPException(status_code=403, detail="You do not have permission to access this attachment")
+
+    storage_path = attachment.get("storage_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Storage path not found")
+
+    signed_url = get_signed_attachment_url(client, storage_path, download=attachment.get("file_name"))
     
     # Handle both string and dict responses from Supabase python client
     url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
@@ -733,9 +764,29 @@ def download_attachment(attachment_id: str, user=Depends(get_current_user)):
 def delete_attachment(attachment_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     record = get_attachment(client, attachment_id)
-    storage_path = record.data["storage_path"]
+    if not record or not record.data:
+        raise HTTPException(status_code=404, detail="Attachment not found")
 
-    delete_file_from_storage(client, storage_path)
+    attachment = record.data
+    is_uploader = attachment.get("uploaded_by") == user.id
+
+    # Only uploader or admin/manager can delete
+    is_admin = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+    except Exception:
+        pass
+
+    if not (is_uploader or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this attachment")
+
+    storage_path = attachment.get("storage_path")
+    if storage_path:
+        delete_file_from_storage(client, storage_path)
     delete_attachment_record(client, attachment_id)
 
     return {"deleted": True}
@@ -1801,6 +1852,8 @@ def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=
 def download_document(doc_id: str, preview: bool = False, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     doc = get_document(client, doc_id)
+    if not doc or not doc.data:
+        raise HTTPException(status_code=404, detail="Document not found")
     storage_path = doc.data["storage_path"]
     download_name = None if preview else doc.data.get("file_name")
     signed_url = get_signed_document_url(client, storage_path, expires_in=3600, download=download_name)
@@ -1812,8 +1865,26 @@ def download_document(doc_id: str, preview: bool = False, user=Depends(get_curre
 def delete_document(doc_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     doc = get_document(client, doc_id)
+    if not doc or not doc.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    is_uploader = doc.data.get("uploaded_by") == user.id
+    is_admin = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            is_admin = role_level >= 1 or hrms_role in ("admin", "manager")
+    except Exception:
+        pass
+
+    if not (is_uploader or is_admin):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this document")
+
     storage_path = doc.data["storage_path"]
-    delete_document_from_storage(client, storage_path)
+    if storage_path:
+        delete_document_from_storage(client, storage_path)
     delete_document_record(client, doc_id)
     return {"status": "ok"}
 

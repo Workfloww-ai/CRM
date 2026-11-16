@@ -896,10 +896,34 @@ def upload_reimbursement_receipt(file: UploadFile = File(...), user=Depends(get_
 def get_reimbursement_receipt(claim_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     claim = client.table("reimbursement_claims").select("*").eq("id", claim_id).single().execute()
-    if not claim.data:
+    if not claim or not claim.data:
         raise HTTPException(status_code=404, detail="Claim not found")
 
-    storage_path = claim.data.get("receipt_storage_path")
+    claim_data = claim.data
+    is_owner = claim_data.get("user_id") == user.id
+
+    # Verify authorization: only the claimant or HR managers/admins can access receipt
+    is_mgr = False
+    try:
+        prof = client.table("profiles").select("role_level, hrms_role, email").eq("id", user.id).single().execute()
+        if prof and prof.data:
+            role_level = prof.data.get("role_level") or 0
+            hrms_role = (prof.data.get("hrms_role") or "").lower()
+            email = (prof.data.get("email") or "").lower()
+            if (
+                role_level >= 1
+                or hrms_role in ("manager", "admin")
+                or email.startswith("manish")
+                or email.startswith("shilpa")
+            ):
+                is_mgr = True
+    except Exception:
+        pass
+
+    if not (is_owner or is_mgr):
+        raise HTTPException(status_code=403, detail="You do not have permission to view this reimbursement receipt")
+
+    storage_path = claim_data.get("receipt_storage_path")
     if not storage_path:
         raise HTTPException(status_code=404, detail="No receipt stored for this claim")
 
