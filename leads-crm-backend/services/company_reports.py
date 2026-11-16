@@ -6,51 +6,64 @@ from tavily import TavilyClient
 from playwright.sync_api import sync_playwright
 from db.client import get_client_for_user
 
+try:
+    from markupsafe import escape as html_escape
+except ImportError:
+    from html import escape as html_escape
+
 api_key = os.environ.get("TAVILY_API_KEY")
 
 def _clean_text(text: str) -> str:
     if not text:
         return ""
-    text = re.sub(r'#+\s*', '', text)          # markdown headers (##, ###)
+    text = re.sub(r'#+\s*', '', str(text))       # markdown headers (##, ###)
     text = re.sub(r'\|', ' ', text)             # table pipes
     text = re.sub(r'\[edit\]', '', text)        # wiki edit markers
     text = re.sub(r'-{2,}', '', text)           # long dashes/table separators
     text = re.sub(r'\s+', ' ', text)            # collapse whitespace/newlines
-    return text.strip()
+    return str(html_escape(text.strip()))
 
 def _html_to_pdf(html_content: str) -> bytes:
     with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.set_content(html_content, wait_until="networkidle")
+        browser = p.chromium.launch(
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-javascript"]
+        )
+        context = browser.new_context(java_script_enabled=False)
+        page = context.new_page()
+        page.set_content(html_content, wait_until="load")
         pdf_bytes = page.pdf(format="A4", print_background=True)
+        context.close()
         browser.close()
         return pdf_bytes
 
 def generate_html_report(company_name: str, categorized_results: dict) -> str:
     sections = ""
+    safe_company_name = str(html_escape(company_name.strip()))
     for category, data in categorized_results.items():
+        safe_category = str(html_escape(str(category).strip()))
         answer = _clean_text(data.get("answer", ""))
         results = data.get("results", [])
 
         if not answer and not results:
             continue
 
-        sections += f'<h2 class="section-title">{category}</h2>\n'
+        sections += f'<h2 class="section-title">{safe_category}</h2>\n'
 
         if answer:
             sections += f'<div class="summary-box">{answer}</div>\n'
 
         for r in results[:3]:
             title = _clean_text(r.get("title", "")) or "Untitled"
-            url = r.get("url", "#")
+            url = str(r.get("url", "#")).strip()
             domain = url.split("/")[2] if url.startswith("http") and len(url.split("/")) > 2 else url
+            safe_domain = str(html_escape(domain))
             content = _clean_text(r.get("content", ""))
             
-            published = r.get("published_date", "")
+            published = str(r.get("published_date", "")).strip()
             if published and "T" in published:
                 published = published.split("T")[0]
-            date_html = f'<span class="source-date">{published}</span>' if published else ""
+            safe_published = str(html_escape(published))
+            date_html = f'<span class="source-date">{safe_published}</span>' if safe_published else ""
 
             if len(content) > 220:
                 content = content[:220].rsplit(" ", 1)[0] + "…"
@@ -58,7 +71,7 @@ def generate_html_report(company_name: str, categorized_results: dict) -> str:
                 continue
             sections += f'''
                 <div class="source-card">
-                    <div class="source-name">{domain}{date_html}</div>
+                    <div class="source-name">{safe_domain}{date_html}</div>
                     <p class="source-text">{content}</p>
                 </div>
             '''
@@ -100,7 +113,7 @@ def generate_html_report(company_name: str, categorized_results: dict) -> str:
         </style>
     </head>
     <body>
-        <div class="report-title">{company_name}</div>
+        <div class="report-title">{safe_company_name}</div>
         <div class="report-subtitle">Company research summary</div>
         {sections}
     </body>
