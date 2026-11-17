@@ -925,8 +925,27 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     time_str = ist_now.strftime("%I:%M %p")
     print(f"[WHATSAPP WEBHOOK] Matched user: {emp_name} (ID: {user_id})", flush=True)
 
-    # 4. Handle "OUT" or "CHECKOUT" (only when coordinates are not sent)
-    is_checkout = (
+    # 4. Fetch today's attendance record for the employee
+    existing = []
+    try:
+        existing = admin_client.table("attendance_records") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("date", today_str) \
+            .execute().data or []
+    except Exception as sel_err:
+        print(f"[WHATSAPP WEBHOOK] Existing lookup warning: {sel_err}", flush=True)
+
+    rec = existing[0] if existing else None
+    has_checked_in = bool(rec and rec.get("check_in_at"))
+    has_checked_out = bool(rec and rec.get("check_out_at"))
+
+    site = ensure_default_site(admin_client)
+    site_id = site.get("id") if site else None
+    site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
+
+    # Explicit checkout trigger words (out, checkout, check-out, etc.)
+    is_explicit_checkout = (
         text_content in ("OUT", "CHECK OUT", "CHECKOUT", "LEAVE", "EXIT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "BYE")
         or "CHECK OUT" in text_content
         or "CHECKOUT" in text_content
@@ -935,84 +954,17 @@ async def handle_incoming_whatsapp_webhook(request: Request):
         or text_content.startswith("OUT")
         or text_content.endswith("OUT")
     )
-    if is_checkout and (lat is None or lng is None):
-        existing = []
-        try:
-            existing = admin_client.table("attendance_records") \
-                .select("*") \
-                .eq("user_id", user_id) \
-                .eq("date", today_str) \
-                .execute().data
-        except Exception as sel_err:
-            print(f"[WHATSAPP WEBHOOK] Existing lookup warning: {sel_err}", flush=True)
 
-        rec = existing[0] if existing else None
-        if not rec or not rec.get("check_in_at"):
-            send_whatsapp_message(
-                from_phone,
-                f"Hello {emp_name}, you haven't checked in yet today! Tap 'Check In' or share your GPS location first."
-            )
-            return {"status": "not_checked_in"}
-
-        if rec.get("check_out_at"):
-            prev_out = rec.get("check_out_at")
-            try:
-                out_dt = datetime.fromisoformat(prev_out.replace("Z", "+00:00")).astimezone(IST)
-                out_str = out_dt.strftime("%I:%M %p")
-            except Exception:
-                out_str = prev_out
-            send_whatsapp_message(
-                from_phone,
-                f"Hello {emp_name}, you have already checked out today at {out_str}.\nHave a wonderful evening! 🌟"
-            )
-            return {"status": "already_checked_out"}
-
-        # Mark that check-out location verification is requested
-        try:
-            admin_client.table("attendance_records").update({"notes": "checkout_requested"}).eq("id", rec["id"]).execute()
-        except Exception as upd_err:
-            print(f"[WHATSAPP WEBHOOK] Could not set checkout_requested note: {upd_err}", flush=True)
-
-        site = ensure_default_site(admin_client)
-        site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
-
-        # 1. Send friendly acknowledgment message
-        send_whatsapp_message(
-            from_phone,
-            f"👋 Hi {emp_name}! Wrapping up your shift?"
-        )
-
-        # 2. Immediately send interactive location request button
-        prompt_text = (
-            f"Please tap the button below to share your current location and verify your check-out at {site_name}."
-        )
-        send_location_request_message(from_phone, prompt_text)
-        return {"status": "checkout_location_requested"}
-
-    # 5. Handle Location Attachment (GPS Pin Shared)
+    # =========================================================================
+    # CASE A: GPS Location Attachment (Location Pin Shared)
+    # =========================================================================
     if lat is not None and lng is not None:
-        site = ensure_default_site(admin_client)
-        site_id = site.get("id") if site else None
-        site_name = site.get("name", "Alt.F Coworking") if site else "Alt.F Coworking"
         within_geofence = check_geofence_with_postgis(admin_client, float(lat), float(lng), site_id) if site_id else False
-
-        # Look up existing record for today
-        existing = []
-        try:
-            existing = admin_client.table("attendance_records") \
-                .select("*") \
-                .eq("user_id", user_id) \
-                .eq("date", today_str) \
-                .execute().data
-        except Exception as sel_e:
-            print(f"[WHATSAPP WEBHOOK] Location existing check error: {sel_e}", flush=True)
-
-        rec = existing[0] if existing else None
 
         # Determine if this location is for CHECK-OUT:
         is_checkout_location = False
-        if rec and rec.get("check_in_at") and not rec.get("check_out_at"):
-            # If user explicitly requested checkout OR already completed check-in location
+        if has_checked_in and not has_checked_out:
+            # If checkout was explicitly requested or check-in location is already recorded
             if rec.get("notes") == "checkout_requested" or rec.get("check_in_latitude") is not None:
                 is_checkout_location = True
 
@@ -1056,118 +1008,139 @@ async def handle_incoming_whatsapp_webhook(request: Request):
             send_whatsapp_message(from_phone, reply)
             return {"status": "checked_out", "work_hours": work_hours, "within_geofence": within_geofence}
 
-        # Otherwise, this location is for CHECK-IN:
-        shift = get_default_shift(admin_client)
-        late_flag = is_checkin_late(shift, ist_now)
-
-        saved_rec = record_attendance_in_supabase(
-            admin_client,
-            user_id=user_id,
-            today_str=today_str,
-            check_in_iso=ist_now.isoformat(),
-            lat=float(lat),
-            lng=float(lng),
-            within_fence=within_geofence,
-            is_late=late_flag,
-            site_id=site_id,
-            shift_id=shift.get("id") if shift else None,
-        )
-
-        fence_msg = f"✅ Inside {site_name} geo-fence." if within_geofence else f"⚠️ Outside office radius for {site_name}."
-        late_msg = " (Marked Late)" if late_flag else ""
-
-        reply = (
-            f"✅ Good morning {emp_name}!\n\n"
-            f"Attendance marked at {time_str}{late_msg}.\n"
-            f"Site: {site_name}\n"
-            f"Status: {fence_msg}\n\n"
-            f"Reply 'Check-Out' when leaving to end your shift. Have a productive day! 🚀"
-        )
-        send_whatsapp_message(from_phone, reply)
-        return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
-
-    # 6. Handle "Check In" button tap or text check-in prompt -> Record Attendance Immediately in Supabase!
-    is_checkin_prompt = (
-        text_content in ("IN", "CHECKIN", "CHECK IN", "CHECK-IN", "PRESENT", "HI", "HELLO", "START", "LOGIN", "GOOD MORNING", "GM", "BTN_CHECKIN")
-        or "CHECK IN" in text_content
-        or "CHECKIN" in text_content
-        or "CHECK-IN" in text_content
-        or "BTN_CHECKIN" in text_content
-        or text_content == "IN"
-        or text_content.startswith("IN ")
-    )
-    if is_checkin_prompt:
-        site = ensure_default_site(admin_client)
-        site_id = site.get("id") if site else None
-        site_name = site.get("name", "Office") if site else "Office"
-
-        shift = get_default_shift(admin_client)
-        late_flag = is_checkin_late(shift, ist_now)
-
-        # Check if already checked in today
-        existing = admin_client.table("attendance_records") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("date", today_str) \
-            .execute().data
-
-        if existing and existing[0].get("check_in_at"):
-            prev_in_time = existing[0].get("check_in_at")
+        elif has_checked_out:
+            prev_out = rec.get("check_out_at")
             try:
-                prev_dt = datetime.fromisoformat(prev_in_time.replace("Z", "+00:00")).astimezone(IST)
-                prev_time_str = prev_dt.strftime("%I:%M %p")
+                out_dt = datetime.fromisoformat(prev_out.replace("Z", "+00:00")).astimezone(IST)
+                out_str = out_dt.strftime("%I:%M %p")
             except Exception:
-                prev_time_str = prev_in_time
-
+                out_str = prev_out
             send_whatsapp_message(
                 from_phone,
-                f"ℹ️ Hi {emp_name}, your attendance was already recorded today at {prev_time_str}.\n"
-                f"Status: Checked In ✅\n\n"
-                f"Reply 'Check-Out' when leaving to record your check-out."
+                f"Hello {emp_name}, you have already checked out today at {out_str}.\nHave a wonderful evening! 🌟"
             )
-            return {"status": "already_checked_in", "user_id": user_id, "check_in_at": prev_in_time}
+            return {"status": "already_checked_out"}
 
-        # 1. Send friendly greeting acknowledgment message
+        else:
+            # Initial check-in with GPS location
+            shift = get_default_shift(admin_client)
+            late_flag = is_checkin_late(shift, ist_now)
+
+            saved_rec = record_attendance_in_supabase(
+                admin_client,
+                user_id=user_id,
+                today_str=today_str,
+                check_in_iso=ist_now.isoformat(),
+                lat=float(lat),
+                lng=float(lng),
+                within_fence=within_geofence,
+                is_late=late_flag,
+                site_id=site_id,
+                shift_id=shift.get("id") if shift else None,
+            )
+
+            fence_msg = f"✅ Inside {site_name} geo-fence." if within_geofence else f"⚠️ Outside office radius for {site_name}."
+            late_msg = " (Marked Late)" if late_flag else ""
+
+            reply = (
+                f"✅ Good morning {emp_name}!\n\n"
+                f"Attendance marked at {time_str}{late_msg}.\n"
+                f"Site: {site_name}\n"
+                f"Status: {fence_msg}\n\n"
+                f"Reply 'Check-Out' when leaving to end your shift. Have a productive day! 🚀"
+            )
+            send_whatsapp_message(from_phone, reply)
+            return {"status": "check_in_recorded", "within_geofence": within_geofence, "record": saved_rec}
+
+    # =========================================================================
+    # CASE B: Text Message or Button Reply (Coordinates Not Sent)
+    # =========================================================================
+
+    # 1. User has ALREADY checked in and has NOT checked out yet:
+    # Check-in happens only once per day. If user has already checked in and types
+    # "out", "checkout", "check-out" OR "hi", "hello", or clicks a button,
+    # trigger the CHECK-OUT flow!
+    if has_checked_in and not has_checked_out:
+        try:
+            admin_client.table("attendance_records").update({"notes": "checkout_requested"}).eq("id", rec["id"]).execute()
+        except Exception as upd_err:
+            print(f"[WHATSAPP WEBHOOK] Could not set checkout_requested note: {upd_err}", flush=True)
+
+        prompt_msg = (
+            f"👋 Hi {emp_name}! Wrapping up your shift?\n\n"
+            f"📍 Please share your current location to verify your check-out at {site_name}.\n\n"
+            f"How to share location:\n"
+            f"1️⃣ Tap the 📎 (or ➕) attachment icon in WhatsApp\n"
+            f"2️⃣ Select *Location*\n"
+            f"3️⃣ Tap *'Send Your Current Location'*"
+        )
+        send_whatsapp_message(from_phone, prompt_msg)
+        send_location_request_message(from_phone, f"Please tap the button below to share your current location and verify your check-out at {site_name}.")
+        return {"status": "checkout_location_requested"}
+
+    # 2. User has ALREADY checked out for today
+    if has_checked_out:
+        prev_out = rec.get("check_out_at")
+        try:
+            out_dt = datetime.fromisoformat(prev_out.replace("Z", "+00:00")).astimezone(IST)
+            out_str = out_dt.strftime("%I:%M %p")
+        except Exception:
+            out_str = prev_out
+        work_hours = rec.get("work_hours")
+        hours_str = f"*{work_hours} hours*" if work_hours is not None else "full shift"
+
         send_whatsapp_message(
             from_phone,
-            f"👋 Good morning {emp_name}! Ready to start your work day?"
+            f"Hello {emp_name}, you have already checked out today at {out_str}.\n"
+            f"⏱️ Total work duration: {hours_str} recorded today.\n"
+            f"Have a wonderful evening and see you tomorrow! 🌟"
         )
+        return {"status": "already_checked_out"}
 
-        # 2. Store check-in record in Supabase immediately
-        saved_record = record_attendance_in_supabase(
-            admin_client,
-            user_id=user_id,
-            today_str=today_str,
-            check_in_iso=ist_now.isoformat(),
-            within_fence=False,
-            is_late=late_flag,
-            site_id=site_id,
-            shift_id=shift.get("id") if shift else None,
+    # 3. User has NOT checked in yet today:
+    # Check-out is strictly only allowed after check-in
+    if is_explicit_checkout:
+        send_whatsapp_message(
+            from_phone,
+            f"Hello {emp_name}, you haven't checked in yet today!\n\n"
+            f"Check-out is only available after check-in. Tap 'Check In' or send 'IN' or share your GPS location to check in."
         )
+        return {"status": "not_checked_in"}
 
-        # 3. Immediately send native WhatsApp Interactive Location Request button
-        loc_prompt_text = (
-            f"Please tap the button below to share your current location and complete your check-in at {site_name}."
-        )
-        send_location_request_message(from_phone, loc_prompt_text)
+    # First interaction of the day (e.g. "IN", "HI", "HELLO", "GOOD MORNING", button click, etc.)
+    # -> Record CHECK-IN immediately in Supabase!
+    shift = get_default_shift(admin_client)
+    late_flag = is_checkin_late(shift, ist_now)
 
-        return {
-            "status": "check_in_recorded",
-            "user_id": user_id,
-            "check_in_at": ist_now.isoformat(),
-            "record": saved_record,
-        }
-
-    # 7. Default help message
-    send_whatsapp_message(
-        from_phone,
-        f"Flowwies Attendance Bot 🤖\n\n"
-        f"Available commands:\n"
-        f"• Tap *'Check In'* or share your *Location* to check in\n"
-        f"• Reply *'OUT'* to check out\n"
-        f"• Alt.F Coworking Geo-fencing is active"
+    saved_record = record_attendance_in_supabase(
+        admin_client,
+        user_id=user_id,
+        today_str=today_str,
+        check_in_iso=ist_now.isoformat(),
+        within_fence=False,
+        is_late=late_flag,
+        site_id=site_id,
+        shift_id=shift.get("id") if shift else None,
     )
-    return {"status": "help_sent"}
+
+    checkin_msg = (
+        f"👋 Good morning {emp_name}! Ready to start your work day?\n\n"
+        f"✅ Check-in recorded at {time_str}.\n"
+        f"📍 Please share your current location to verify attendance at {site_name}.\n\n"
+        f"How to share location:\n"
+        f"1️⃣ Tap the 📎 (or ➕) attachment icon in WhatsApp\n"
+        f"2️⃣ Select *Location*\n"
+        f"3️⃣ Tap *'Send Your Current Location'*"
+    )
+    send_whatsapp_message(from_phone, checkin_msg)
+    send_location_request_message(from_phone, f"Please tap the button below to share your current location and complete your check-in at {site_name}.")
+
+    return {
+        "status": "check_in_recorded",
+        "user_id": user_id,
+        "check_in_at": ist_now.isoformat(),
+        "record": saved_record,
+    }
 
 
 @router.get("/webhook")
