@@ -59,9 +59,9 @@ class TestAttendanceFlow(unittest.TestCase):
         res = client.post("/api/whatsapp-webhook", json=payload)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json().get("status"), "checkout_location_requested")
-        self.assertTrue(mock_wa_msg.called)
-        # Ensure message asks about wrapping up shift
-        sent_text = mock_wa_msg.call_args[0][1]
+        self.assertTrue(mock_loc_msg.called)
+        # Ensure single interactive location message asks about wrapping up shift
+        sent_text = mock_loc_msg.call_args[0][1]
         self.assertIn("Wrapping up your shift", sent_text)
 
     @patch("routers.attendance.get_admin_client")

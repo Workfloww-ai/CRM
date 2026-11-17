@@ -1068,14 +1068,9 @@ async def handle_incoming_whatsapp_webhook(request: Request):
 
         prompt_msg = (
             f"👋 Hi {emp_name}! Wrapping up your shift?\n\n"
-            f"📍 Please share your current location to verify your check-out at {site_name}.\n\n"
-            f"How to share location:\n"
-            f"1️⃣ Tap the 📎 (or ➕) attachment icon in WhatsApp\n"
-            f"2️⃣ Select *Location*\n"
-            f"3️⃣ Tap *'Send Your Current Location'*"
+            f"📍 Tap the button below to share your current location and verify your check-out at {site_name}."
         )
-        send_whatsapp_message(from_phone, prompt_msg)
-        send_location_request_message(from_phone, f"Please tap the button below to share your current location and verify your check-out at {site_name}.")
+        send_location_request_message(from_phone, prompt_msg)
         return {"status": "checkout_location_requested"}
 
     # 2. User has ALREADY checked out for today
@@ -1126,14 +1121,9 @@ async def handle_incoming_whatsapp_webhook(request: Request):
     checkin_msg = (
         f"👋 Good morning {emp_name}! Ready to start your work day?\n\n"
         f"✅ Check-in recorded at {time_str}.\n"
-        f"📍 Please share your current location to verify attendance at {site_name}.\n\n"
-        f"How to share location:\n"
-        f"1️⃣ Tap the 📎 (or ➕) attachment icon in WhatsApp\n"
-        f"2️⃣ Select *Location*\n"
-        f"3️⃣ Tap *'Send Your Current Location'*"
+        f"📍 Tap the button below to share your current location and verify attendance at {site_name}."
     )
-    send_whatsapp_message(from_phone, checkin_msg)
-    send_location_request_message(from_phone, f"Please tap the button below to share your current location and complete your check-in at {site_name}.")
+    send_location_request_message(from_phone, checkin_msg)
 
     return {
         "status": "check_in_recorded",
