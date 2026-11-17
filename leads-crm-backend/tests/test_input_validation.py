@@ -72,6 +72,36 @@ class TestInputValidation(unittest.TestCase):
         self.assertEqual(sanitized["name"], "'=1+2")
         self.assertEqual(sanitized["org"], "Workfloww")
 
+    def test_whatsapp_signature_verification(self):
+        """Verify WhatsApp webhook signature handling for mobiCOMM relays and Meta signatures."""
+        import hmac
+        import hashlib
+        import os
+        from services.whatsapp import verify_meta_signature
+
+        payload = b'{"object":"whatsapp_business_account"}'
+
+        # 1. mobiCOMM relay with no signature header -> must be accepted
+        self.assertTrue(verify_meta_signature(payload, None))
+
+        # 2. Meta signature with secret configured
+        secret = "test_meta_app_secret"
+        old_secret = os.environ.get("WHATSAPP_APP_SECRET")
+        os.environ["WHATSAPP_APP_SECRET"] = secret
+        try:
+            valid_sig = "sha256=" + hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+            invalid_sig = "sha256=invalid_hex_string"
+
+            # Valid signature -> accepted
+            self.assertTrue(verify_meta_signature(payload, valid_sig))
+            # Invalid signature -> rejected
+            self.assertFalse(verify_meta_signature(payload, invalid_sig))
+        finally:
+            if old_secret is not None:
+                os.environ["WHATSAPP_APP_SECRET"] = old_secret
+            else:
+                os.environ.pop("WHATSAPP_APP_SECRET", None)
+
 
 if __name__ == "__main__":
     unittest.main()

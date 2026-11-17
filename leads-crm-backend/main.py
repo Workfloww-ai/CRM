@@ -193,6 +193,22 @@ async def root_whatsapp_webhook_incoming(request: Request):
     return await handle_incoming_whatsapp_webhook(request)
 
 
+@app.get("/api/cron/checkin-reminder")
+@app.post("/api/cron/checkin-reminder")
+def api_cron_checkin_reminder():
+    """Trigger 9:00 AM check-in reminder via Cloud Scheduler or manual ping."""
+    from routers.attendance import dispatch_daily_checkin_reminders
+    return dispatch_daily_checkin_reminders()
+
+
+@app.get("/api/cron/checkout-reminder")
+@app.post("/api/cron/checkout-reminder")
+def api_cron_checkout_reminder():
+    """Trigger 6:00 PM check-out reminder via Cloud Scheduler or manual ping."""
+    from routers.attendance import dispatch_daily_checkout_reminders
+    return dispatch_daily_checkout_reminders()
+
+
 # =============================================================================
 # AUTOMATED 9:00 AM CHECK-IN & 6:00 PM CHECK-OUT SCHEDULER (IST)
 # =============================================================================
@@ -211,18 +227,18 @@ async def attendance_daily_scheduler_loop():
             now_ist = datetime.now(IST)
             today_str = now_ist.strftime("%Y-%m-%d")
 
-            # 1. Fire automatically at 09:00 IST (9:00 AM)
-            if now_ist.hour == 9 and now_ist.minute in (0, 1, 2) and _checkin_cron_last_run_date != today_str:
+            # 1. Fire automatically between 09:00 and 11:00 IST (catches up if container scales from 0)
+            if 9 <= now_ist.hour < 11 and _checkin_cron_last_run_date != today_str:
                 _checkin_cron_last_run_date = today_str
-                print(f"[ATTENDANCE SCHEDULER] 9:00 AM IST reached! Triggering automated check-in reminders for {today_str}...", flush=True)
+                print(f"[ATTENDANCE SCHEDULER] Triggering automated morning check-in reminders for {today_str} at {now_ist.strftime('%H:%M')} IST...", flush=True)
                 from routers.attendance import dispatch_daily_checkin_reminders
                 res = dispatch_daily_checkin_reminders()
                 print(f"[ATTENDANCE SCHEDULER] Check-in reminder completed: {res}", flush=True)
 
-            # 2. Fire automatically at 18:00 IST (6:00 PM)
-            if now_ist.hour == 18 and now_ist.minute in (0, 1, 2) and _checkout_cron_last_run_date != today_str:
+            # 2. Fire automatically between 18:00 and 20:00 IST (6:00 PM - 8:00 PM)
+            if 18 <= now_ist.hour < 20 and _checkout_cron_last_run_date != today_str:
                 _checkout_cron_last_run_date = today_str
-                print(f"[ATTENDANCE SCHEDULER] 6:00 PM IST reached! Triggering automated checkout reminders for {today_str}...", flush=True)
+                print(f"[ATTENDANCE SCHEDULER] Triggering automated evening checkout reminders for {today_str} at {now_ist.strftime('%H:%M')} IST...", flush=True)
                 from routers.attendance import dispatch_daily_checkout_reminders
                 res = dispatch_daily_checkout_reminders()
                 print(f"[ATTENDANCE SCHEDULER] Checkout reminder completed: {res}", flush=True)
