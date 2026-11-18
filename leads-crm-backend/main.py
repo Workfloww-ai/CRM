@@ -1,6 +1,28 @@
-from boto3 import client
-
+import csv
+import io
+import json
+import os
+import re
 from typing import Optional
+
+from dotenv import load_dotenv
+from fastapi import (
+    BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile,
+)
+from fastapi.exceptions import HTTPException as StarletteHTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font
+from openpyxl.worksheet.datavalidation import DataValidation
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from auth.dependencies import get_current_user
+from auth.permissions import require_admin, require_super_admin, require_crm_access
+from db.client import get_client_for_user
 from db.queries import (
     get_all_leads,
     get_leads_page,
@@ -16,59 +38,34 @@ from db.queries import (
     get_all_investors, get_investors_page, create_investor, update_investor, delete_investor,
     get_all_fractional_leaders, get_fractional_leaders_page, create_fractional_leader, update_fractional_leader, delete_fractional_leader,
     get_all_training_partners, get_training_partners_page, create_training_partner, update_training_partner, delete_training_partner,
-    get_all_competitors, get_competitors_page, create_competitor, update_competitor, delete_competitor, get_competitor_activities, create_competitor_activity
-)
-from db.queries import (
+    get_all_competitors, get_competitors_page, create_competitor, update_competitor, delete_competitor, get_competitor_activities, create_competitor_activity,
     upload_file_to_storage, create_attachment_record, get_lead_attachments, get_attachment, get_signed_attachment_url,
     delete_file_from_storage, delete_attachment_record, upload_document_to_storage, create_document_record,
     get_documents_by_folder, get_document, get_signed_document_url, delete_document_from_storage, delete_document_record,
-    get_custom_folders, create_custom_folder, delete_custom_folder
+    get_custom_folders, create_custom_folder, delete_custom_folder,
+    create_action_item, get_action_items, update_action_item, delete_action_item,
+    get_lead_details, get_training_partner_details, get_fractional_leader_details,
+    delete_fractional_leader_activity, delete_training_partner_activity,
+    get_fractional_leader_activities, create_fractional_leader_activity,
+    get_investor_activities, create_investor_activity,
+    get_training_partner_activities, create_training_partner_activity,
+    get_company_reports, get_company_report, create_company_report,
 )
-from pydantic import BaseModel
 from models import (
     LeadCreate, LeadUpdate, NoteCreate, ActionItemUpdate,
     InvestorCreate, InvestorUpdate,
     FractionalLeaderCreate, FractionalLeaderUpdate,
     TrainingPartnerCreate, TrainingPartnerUpdate,
-    CompetitorCreate, CompetitorUpdate
+    CompetitorCreate, CompetitorUpdate,
 )
-from db.queries import (
-    create_action_item, get_action_items, update_action_item, delete_action_item,
-    get_lead_details, get_training_partner_details, get_fractional_leader_details,
-    delete_fractional_leader_activity, delete_training_partner_activity
-)
-from services.insight_analyzer import analyze_insight_for_action_item
-from auth.permissions import require_admin, require_super_admin, require_crm_access
-from auth.dependencies import get_current_user
 from routers.hrms import router as hrms_router
 from routers.attendance import (
     router as attendance_router,
     handle_whatsapp_webhook_verification,
     handle_incoming_whatsapp_webhook,
 )
-from fastapi import FastAPI, Header, HTTPException, Depends, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-import csv
-import io
-import json
-from fastapi import UploadFile, File
-from fastapi import Request
-from db.client import get_client_for_user
-
-
-
-from openpyxl import Workbook
-from openpyxl.worksheet.datavalidation import DataValidation
-from fastapi.responses import Response
-from openpyxl import load_workbook
-from openpyxl.styles import Font
-import os
-import re
-from dotenv import load_dotenv
+from services.company_reports import run_company_scrape
+from services.insight_analyzer import analyze_insight_for_action_item
 
 load_dotenv()
 
@@ -78,12 +75,47 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException as StarletteHTTPException
 
-from fastapi import BackgroundTasks
-from services.company_reports import run_company_scrape
-from db.queries import get_company_reports, get_company_report, create_company_report
+# =============================================================================
+# Shared constants + helpers (defined up-front so every route can use them)
+# =============================================================================
+
+REQUIRED_COLUMNS = [
+    "first_name", "last_name", "title", "org", "email", "phone", "phone_2",
+    "linkedin", "location", "industry", "function", "status", "next_action", "due_date",
+    "revenue", "currency"
+]
+VALID_STATUSES = {"New", "Contacted", "Follow-up", "Won", "Lost"}
+
+
+def sanitize_csv_cell(value):
+    """
+    Prevents CSV / Formula Injection (CWE-1236 / OWASP).
+    If a string starts with formula-triggering characters (=, +, -, @, \\t, \\r),
+    prepends a single quote "'" to neutralize spreadsheet formula evaluation.
+    """
+    if value is None:
+        return ""
+    val_str = str(value)
+    if val_str and val_str[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{val_str}"
+    return val_str
+
+
+def sanitize_csv_row(row: dict) -> dict:
+    """Sanitizes all fields in a dictionary row before CSV export."""
+    return {k: sanitize_csv_cell(v) for k, v in row.items()}
+
+
+def sanitize_filename(filename: str) -> str:
+    filename = filename.replace("/", "").replace("\\", "")
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    return filename[:200]  # cap length too, just in case
+
+
+# =============================================================================
+# Company reports
+# =============================================================================
 
 @app.post("/companies/{company_name}/scrape")
 @limiter.limit("5/minute")
@@ -123,6 +155,11 @@ def download_company_report(request: Request, report_id: str, user=Depends(get_c
     signed_url = client.storage.from_("company-reports").create_signed_url(record.data["storage_path"], 60)
     return {"url": signed_url["signedURL"]}
 
+
+# =============================================================================
+# Error handlers + CORS
+# =============================================================================
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
@@ -130,6 +167,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         content={"detail": exc.detail},
         headers={'Access-Control-Allow-Origin': '*'}
     )
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -142,6 +180,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "An internal error occurred.", "error_id": error_id},
         headers={'Access-Control-Allow-Origin': '*'}
     )
+
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 allowed_origins = [
@@ -163,9 +202,16 @@ app.add_middleware(
 app.include_router(hrms_router)
 app.include_router(attendance_router)
 
+
 # =============================================================================
 # WHATSAPP INCOMING WEBHOOK CALLBACK ENDPOINTS (mobiCOMM & Meta Cloud API)
+#
+# Reminders (9:30 check-in, 17:30 check-out) and the 19:00 auto check-out now run from
+# Cloud Scheduler -> /hrms/attendance/cron/* (secured with X-Cron-Secret).
+# The old in-process scheduler loop and the open /api/cron/* routes were removed because they
+# caused duplicate reminders on restarts / multiple instances and were publicly triggerable.
 # =============================================================================
+
 @app.get("/api/whatsapp-webhook")
 def api_whatsapp_webhook_verify(request: Request):
     """Callback URL verification handshake for mobiCOMM / Meta WhatsApp integration."""
@@ -174,10 +220,7 @@ def api_whatsapp_webhook_verify(request: Request):
 
 @app.post("/api/whatsapp-webhook")
 async def api_whatsapp_webhook_incoming(request: Request):
-    """
-    Incoming webhook for mobiCOMM WhatsApp events.
-    Receives employee button clicks (e.g. 'Check In') and GPS location coordinates.
-    """
+    """Incoming webhook for mobiCOMM WhatsApp events (button clicks + GPS location)."""
     return await handle_incoming_whatsapp_webhook(request)
 
 
@@ -193,80 +236,20 @@ async def root_whatsapp_webhook_incoming(request: Request):
     return await handle_incoming_whatsapp_webhook(request)
 
 
-@app.get("/api/cron/checkin-reminder")
-@app.post("/api/cron/checkin-reminder")
-def api_cron_checkin_reminder():
-    """Trigger 9:00 AM check-in reminder via Cloud Scheduler or manual ping."""
-    from routers.attendance import dispatch_daily_checkin_reminders
-    return dispatch_daily_checkin_reminders()
-
-
-@app.get("/api/cron/checkout-reminder")
-@app.post("/api/cron/checkout-reminder")
-def api_cron_checkout_reminder():
-    """Trigger 6:00 PM check-out reminder via Cloud Scheduler or manual ping."""
-    from routers.attendance import dispatch_daily_checkout_reminders
-    return dispatch_daily_checkout_reminders()
-
-
-# =============================================================================
-# AUTOMATED 9:00 AM CHECK-IN & 6:00 PM CHECK-OUT SCHEDULER (IST)
-# =============================================================================
-_checkin_cron_last_run_date = None
-_checkout_cron_last_run_date = None
-
-async def attendance_daily_scheduler_loop():
-    global _checkin_cron_last_run_date, _checkout_cron_last_run_date
-    import asyncio
-    from datetime import datetime, timezone, timedelta
-    IST = timezone(timedelta(hours=5, minutes=30))
-
-    while True:
-        try:
-            await asyncio.sleep(30)
-            now_ist = datetime.now(IST)
-            today_str = now_ist.strftime("%Y-%m-%d")
-
-            # 1. Fire automatically between 09:00 and 11:00 IST (catches up if container scales from 0)
-            if 9 <= now_ist.hour < 11 and _checkin_cron_last_run_date != today_str:
-                _checkin_cron_last_run_date = today_str
-                print(f"[ATTENDANCE SCHEDULER] Triggering automated morning check-in reminders for {today_str} at {now_ist.strftime('%H:%M')} IST...", flush=True)
-                from routers.attendance import dispatch_daily_checkin_reminders
-                res = dispatch_daily_checkin_reminders()
-                print(f"[ATTENDANCE SCHEDULER] Check-in reminder completed: {res}", flush=True)
-
-            # 2. Fire automatically between 18:00 and 20:00 IST (6:00 PM - 8:00 PM)
-            if 18 <= now_ist.hour < 20 and _checkout_cron_last_run_date != today_str:
-                _checkout_cron_last_run_date = today_str
-                print(f"[ATTENDANCE SCHEDULER] Triggering automated evening checkout reminders for {today_str} at {now_ist.strftime('%H:%M')} IST...", flush=True)
-                from routers.attendance import dispatch_daily_checkout_reminders
-                res = dispatch_daily_checkout_reminders()
-                print(f"[ATTENDANCE SCHEDULER] Checkout reminder completed: {res}", flush=True)
-        except Exception as sched_err:
-            print(f"[ATTENDANCE SCHEDULER ERROR] {sched_err}", flush=True)
-
-
-@app.on_event("startup")
-async def start_attendance_daily_scheduler():
-    import asyncio
-    asyncio.create_task(attendance_daily_scheduler_loop())
-
-
-
-def sanitize_filename(filename: str) -> str:
-    filename = filename.replace("/", "").replace("\\", "")
-    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
-    return filename[:200]  # cap length too, just in case
-
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Leads CRM & Flowwies HRMS backend is running"}
+
+
+# =============================================================================
+# Leads
+# =============================================================================
 
 @app.get("/leads")
 @limiter.limit("60/minute")
 def get_leads(
     request: Request,
-    page: int = 1, 
+    page: int = 1,
     page_size: int = 20,
     search: Optional[str] = None,
     name: Optional[str] = None,
@@ -287,7 +270,7 @@ def get_leads(
         raise HTTPException(status_code=400, detail=f"Invalid sort direction: {sort_dir}")
 
     sort_desc = sort_dir.lower() == "desc" if sort_dir else False
-    
+
     db_sort_by = "due_date"
     if sort_by == "name":
         db_sort_by = "first_name"
@@ -297,8 +280,9 @@ def get_leads(
     client = get_client_for_user(user.token)
     assignee_id = user.id if assigned_to_me else None
     response = get_leads_page(client, page, page_size, search, name, org, title, location, industry, function, db_sort_by, sort_desc, assignee_id)
-    
+
     return {"leads": response.data, "total": response.count, "page": page, "page_size": page_size}
+
 
 @app.post("/leads")
 @limiter.limit("60/minute")
@@ -316,13 +300,14 @@ def create_lead(request: Request, lead: LeadCreate, user=Depends(get_current_use
 
     return response.data
 
+
 @app.patch("/leads/{lead_id}")
 @limiter.limit("60/minute")
 def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(get_current_user)):
     update_data = lead.model_dump(exclude_unset=True)
     from datetime import datetime, timezone
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
     client = get_client_for_user(user.token)
     if "status" in update_data:
         old_lead = get_lead_status(client, lead_id)
@@ -341,12 +326,14 @@ def update_lead(request: Request, lead_id: str, lead: LeadUpdate, user=Depends(g
     response = db_update_lead(client, lead_id, update_data)
     return response.data
 
+
 @app.delete("/leads/{lead_id}")
 @limiter.limit("60/minute")
 def delete_lead(request: Request, lead_id: str, user=Depends(require_admin)):
     client = get_client_for_user(user.token)
-    response = db_delete_lead(client, lead_id)
+    db_delete_lead(client, lead_id)
     return {"deleted": True, "id": lead_id}
+
 
 @app.get("/me")
 @limiter.limit("60/minute")
@@ -355,12 +342,14 @@ def get_me(request: Request, user=Depends(get_current_user)):
     profile = get_profile(client, user.id)
     return profile.data
 
+
 @app.get("/leads/{lead_id}/activities")
 @limiter.limit("60/minute")
 def get_lead_activities(request: Request, lead_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     response = db_get_lead_activities(client, lead_id)
     return response.data
+
 
 @app.post("/leads/{lead_id}/notes")
 @limiter.limit("60/minute")
@@ -415,6 +404,7 @@ def create_note(request: Request, lead_id: str, note: NoteCreate, user=Depends(g
         "action_item": created_action_item
     }
 
+
 @app.delete("/leads/{lead_id}/activities/{activity_id}")
 @limiter.limit("60/minute")
 def delete_lead_activity(request: Request, lead_id: str, activity_id: str, user=Depends(get_current_user)):
@@ -426,6 +416,7 @@ def delete_lead_activity(request: Request, lead_id: str, activity_id: str, user=
             detail="Database blocked deletion. Please run migration 014_add_delete_activity_policy.sql in Supabase SQL editor or add SUPABASE_SERVICE_ROLE_KEY to backend .env."
         )
     return {"status": "ok"}
+
 
 @app.get("/action-items")
 @limiter.limit("60/minute")
@@ -452,6 +443,7 @@ def list_action_items(
     )
     return response.data
 
+
 @app.patch("/action-items/{item_id}")
 @limiter.limit("60/minute")
 def update_action_item_endpoint(
@@ -465,6 +457,7 @@ def update_action_item_endpoint(
     response = update_action_item(client, item_id, update_data)
     return response.data
 
+
 @app.delete("/action-items/{item_id}")
 @limiter.limit("60/minute")
 def delete_action_item_endpoint(
@@ -475,6 +468,7 @@ def delete_action_item_endpoint(
     client = get_client_for_user(user.token)
     delete_action_item(client, item_id)
     return {"status": "ok"}
+
 
 @app.get("/leads/export")
 @limiter.limit("5/minute")
@@ -489,57 +483,35 @@ def export_leads(request: Request, export_type: Optional[str] = None, user=Depen
         "status": "status"
     }
 
-def sanitize_csv_cell(value):
-    """
-    Prevents CSV / Formula Injection (CWE-1236 / OWASP).
-    If a string starts with formula-triggering characters (=, +, -, @, \t, \r),
-    prepends a single quote "'" to neutralize spreadsheet formula evaluation.
-    """
-    if value is None:
-        return ""
-    val_str = str(value)
-    if val_str and val_str[0] in ("=", "+", "-", "@", "\t", "\r"):
-        return f"'{val_str}"
-    return val_str
-
-
-def sanitize_csv_row(row: dict) -> dict:
-    """Sanitizes all string fields in a dictionary row before CSV export."""
-    return {k: sanitize_csv_cell(v) for k, v in row.items()}
-
-
     output = io.StringIO()
+    selected_fields = []
     if export_type:
         types = [t.strip() for t in export_type.split(',')]
         selected_fields = [export_field_map[t] for t in types if t in export_field_map]
-        
-        if selected_fields:
-            export_columns = ["name", "title", "org", "function", "location"] + selected_fields
-            writer = csv.DictWriter(output, fieldnames=export_columns)
-            writer.writeheader()
-            for lead in leads:
-                name = f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip()
-                row = {
-                    "name": name,
-                    "title": lead.get("title", ""),
-                    "org": lead.get("org", ""),
-                    "function": lead.get("function", ""),
-                    "location": lead.get("location", "")
-                }
-                for field in selected_fields:
-                    row[field] = lead.get(field, "")
-                writer.writerow(sanitize_csv_row(row))
-        else:
-            writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
-            writer.writeheader()
-            for lead in leads:
-                raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
-                writer.writerow(sanitize_csv_row(raw_row))
+
+    if selected_fields:
+        # Slim export: contact summary + only the requested fields
+        export_columns = ["name", "title", "org", "function", "location"] + selected_fields
+        writer = csv.DictWriter(output, fieldnames=export_columns)
+        writer.writeheader()
+        for lead in leads:
+            name = f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip()
+            row = {
+                "name": name,
+                "title": lead.get("title", ""),
+                "org": lead.get("org", ""),
+                "function": lead.get("function", ""),
+                "location": lead.get("location", ""),
+            }
+            for field in selected_fields:
+                row[field] = lead.get(field, "")
+            writer.writerow(sanitize_csv_row(row))
     else:
+        # Full export in the same shape as the import template
         writer = csv.DictWriter(output, fieldnames=REQUIRED_COLUMNS)
         writer.writeheader()
         for lead in leads:
-            raw_row = {k: lead.get(k, "") for k in writer.fieldnames}
+            raw_row = {k: lead.get(k, "") for k in REQUIRED_COLUMNS}
             writer.writerow(sanitize_csv_row(raw_row))
 
     output.seek(0)
@@ -549,12 +521,6 @@ def sanitize_csv_row(row: dict) -> dict:
         headers={"Content-Disposition": "attachment; filename=leads_export.csv"},
     )
 
-REQUIRED_COLUMNS = [
-    "first_name", "last_name", "title", "org", "email", "phone", "phone_2",
-    "linkedin", "location", "industry", "function", "status", "next_action", "due_date",
-    "revenue", "currency"
-]
-VALID_STATUSES = {"New", "Contacted", "Follow-up", "Won", "Lost"}
 
 @app.get("/leads/import-template")
 @limiter.limit("5/minute")
@@ -568,6 +534,7 @@ def import_template(request: Request, user=Depends(get_current_user)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=leads_import_template.csv"},
     )
+
 
 LINKEDIN_COLUMN_MAP = {
     "First Name": "first_name",
@@ -630,7 +597,6 @@ def map_row_to_expected(raw_row_dict, expected_keys):
     return mapped
 
 
-
 @app.post("/leads/import")
 def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
     if file.filename.endswith(".xlsx"):
@@ -661,11 +627,12 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
         )
 
     client = get_client_for_user(user.token)
+
     def process_stream():
         imported = []
         errors = []
         total = len(reader)
-        
+
         if total == 0:
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
@@ -695,7 +662,6 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
                 continue
             existing_names.add(name_tuple)
 
-
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status {sorted(VALID_STATUSES)}, row rejected")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
@@ -719,12 +685,13 @@ def import_leads(file: UploadFile = File(...), user=Depends(get_current_user)):
                 imported.append(new_lead["id"])
             except Exception as e:
                 errors.append(f"Row {i}: DB error - {str(e)}")
-            
+
             yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
 
         yield json.dumps({"type": "complete", "imported_count": len(imported), "errors": errors}) + "\n"
 
     return StreamingResponse(process_stream(), media_type="application/x-ndjson")
+
 
 @app.post("/leads/{lead_id}/attachments")
 def upload_attachment(lead_id: str, file: UploadFile = File(...), user=Depends(get_current_user)):
@@ -800,7 +767,7 @@ def download_attachment(attachment_id: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Storage path not found")
 
     signed_url = get_signed_attachment_url(client, storage_path, download=attachment.get("file_name"))
-    
+
     # Handle both string and dict responses from Supabase python client
     url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
 
@@ -837,6 +804,7 @@ def delete_attachment(attachment_id: str, user=Depends(get_current_user)):
     delete_attachment_record(client, attachment_id)
 
     return {"deleted": True}
+
 
 @app.get("/leads/import-template-xlsx")
 @limiter.limit("5/minute")
@@ -911,12 +879,14 @@ def get_investors(
     response = get_investors_page(client, page, page_size, search, db_sort_by, sort_desc)
     return {"data": response.data, "total": response.count, "page": page, "page_size": page_size}
 
+
 @app.post("/investors")
 @limiter.limit("60/minute")
 def create_investor_route(request: Request, data: InvestorCreate, user=Depends(require_super_admin)):
     client = get_client_for_user(user.token)
     response = create_investor(client, data.model_dump())
     return response.data
+
 
 @app.patch("/investors/{id}")
 @limiter.limit("60/minute")
@@ -928,13 +898,13 @@ def update_investor_route(request: Request, id: str, data: InvestorUpdate, user=
     response = update_investor(client, id, update_data)
     return response.data
 
+
 @app.delete("/investors/{id}")
 @limiter.limit("60/minute")
 def delete_investor_route(request: Request, id: str, user=Depends(require_super_admin)):
     client = get_client_for_user(user.token)
-    response = delete_investor(client, id)
+    delete_investor(client, id)
     return {"deleted": True, "id": id}
-
 
 
 @app.get("/investors/export")
@@ -955,8 +925,9 @@ def export_investors(request: Request, user=Depends(require_super_admin)):
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=investors_export.csv"},
+        headers={"Content-Disposition": "attachment; filename=investors_export.csv"},
     )
+
 
 @app.get("/investors/import-template")
 @limiter.limit("5/minute")
@@ -968,8 +939,9 @@ def import_template_investors(request: Request, user=Depends(require_super_admin
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=investors_import_template.csv"},
+        headers={"Content-Disposition": "attachment; filename=investors_import_template.csv"},
     )
+
 
 @app.get("/investors/import-template-xlsx")
 @limiter.limit("5/minute")
@@ -1010,8 +982,9 @@ def import_template_xlsx_investors(request: Request, user=Depends(require_super_
     return Response(
         content=buffer.read(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=investors_import_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=investors_import_template.xlsx"},
     )
+
 
 @app.post("/investors/import")
 def import_investors(file: UploadFile = File(...), user=Depends(require_super_admin)):
@@ -1028,9 +1001,9 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
 
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
-    
+
     expected = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'company', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
-    
+
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]
     client = get_client_for_user(user.token)
@@ -1039,7 +1012,7 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
         imported = []
         errors = []
         total = len(reader)
-        
+
         if total == 0:
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
@@ -1069,7 +1042,6 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
                 continue
             existing_names.add(name_tuple)
 
-
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
@@ -1091,12 +1063,14 @@ def import_investors(file: UploadFile = File(...), user=Depends(require_super_ad
                 imported.append(new_item["id"])
             except Exception as e:
                 errors.append(f"Row {i}: DB error - {str(e)}")
-            
+
             yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
 
         yield json.dumps({"type": "complete", "imported_count": len(imported), "errors": errors}) + "\n"
 
     return StreamingResponse(process_stream(), media_type="application/x-ndjson")
+
+
 # --- Fractional Leaders ---
 
 @app.get("/fractional-leaders")
@@ -1130,6 +1104,7 @@ def get_fractional_leaders(
 
     return {"data": response.data, "total": response.count, "page": page, "page_size": page_size}
 
+
 @app.post("/fractional-leaders")
 @limiter.limit("60/minute")
 def create_fractional_leader_route(request: Request, data: FractionalLeaderCreate, user=Depends(get_current_user)):
@@ -1144,6 +1119,7 @@ def create_fractional_leader_route(request: Request, data: FractionalLeaderCreat
     })
     return response.data
 
+
 @app.patch("/fractional-leaders/{id}")
 @limiter.limit("60/minute")
 def update_fractional_leader_route(request: Request, id: str, data: FractionalLeaderUpdate, user=Depends(get_current_user)):
@@ -1154,13 +1130,13 @@ def update_fractional_leader_route(request: Request, id: str, data: FractionalLe
     response = update_fractional_leader(client, id, update_data)
     return response.data
 
+
 @app.delete("/fractional-leaders/{id}")
 @limiter.limit("60/minute")
 def delete_fractional_leader_route(request: Request, id: str, user=Depends(require_admin)):
     client = get_client_for_user(user.token)
-    response = delete_fractional_leader(client, id)
+    delete_fractional_leader(client, id)
     return {"deleted": True, "id": id}
-
 
 
 @app.get("/fractional-leaders/export")
@@ -1181,8 +1157,9 @@ def export_fractional_leaders(request: Request, user=Depends(get_current_user)):
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=fractional_leaders_export.csv"},
+        headers={"Content-Disposition": "attachment; filename=fractional_leaders_export.csv"},
     )
+
 
 @app.get("/fractional-leaders/import-template")
 @limiter.limit("5/minute")
@@ -1194,8 +1171,9 @@ def import_template_fractional_leaders(request: Request, user=Depends(get_curren
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=fractional_leaders_import_template.csv"},
+        headers={"Content-Disposition": "attachment; filename=fractional_leaders_import_template.csv"},
     )
+
 
 @app.get("/fractional-leaders/import-template-xlsx")
 @limiter.limit("5/minute")
@@ -1236,8 +1214,9 @@ def import_template_xlsx_fractional_leaders(request: Request, user=Depends(get_c
     return Response(
         content=buffer.read(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=fractional_leaders_import_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=fractional_leaders_import_template.xlsx"},
     )
+
 
 @app.post("/fractional-leaders/import")
 def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_current_user)):
@@ -1254,9 +1233,9 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
 
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
-    
+
     expected = ['first_name', 'last_name', 'title', 'email', 'phone', 'phone_2', 'domain', 'industry', 'function', 'linkedin', 'location', 'revenue', 'currency', 'status', 'next_action', 'due_date']
-    
+
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]
     client = get_client_for_user(user.token)
@@ -1265,7 +1244,7 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
         imported = []
         errors = []
         total = len(reader)
-        
+
         if total == 0:
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
@@ -1295,7 +1274,6 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
                 continue
             existing_names.add(name_tuple)
 
-
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
@@ -1317,12 +1295,14 @@ def import_fractional_leaders(file: UploadFile = File(...), user=Depends(get_cur
                 imported.append(new_item["id"])
             except Exception as e:
                 errors.append(f"Row {i}: DB error - {str(e)}")
-            
+
             yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
 
         yield json.dumps({"type": "complete", "imported_count": len(imported), "errors": errors}) + "\n"
 
     return StreamingResponse(process_stream(), media_type="application/x-ndjson")
+
+
 # --- Training Partners ---
 
 @app.get("/training-partners")
@@ -1356,6 +1336,7 @@ def get_training_partners(
 
     return {"data": response.data, "total": response.count, "page": page, "page_size": page_size}
 
+
 @app.post("/training-partners")
 @limiter.limit("60/minute")
 def create_training_partner_route(request: Request, data: TrainingPartnerCreate, user=Depends(get_current_user)):
@@ -1370,6 +1351,7 @@ def create_training_partner_route(request: Request, data: TrainingPartnerCreate,
     })
     return response.data
 
+
 @app.patch("/training-partners/{id}")
 @limiter.limit("60/minute")
 def update_training_partner_route(request: Request, id: str, data: TrainingPartnerUpdate, user=Depends(get_current_user)):
@@ -1380,12 +1362,15 @@ def update_training_partner_route(request: Request, id: str, data: TrainingPartn
     response = update_training_partner(client, id, update_data)
     return response.data
 
+
 @app.delete("/training-partners/{id}")
 @limiter.limit("60/minute")
 def delete_training_partner_route(request: Request, id: str, user=Depends(require_admin)):
     client = get_client_for_user(user.token)
-    response = delete_training_partner(client, id)
+    delete_training_partner(client, id)
     return {"deleted": True, "id": id}
+
+
 @app.get("/training-partners/export")
 @limiter.limit("5/minute")
 def export_training_partners(request: Request, user=Depends(get_current_user)):
@@ -1404,8 +1389,9 @@ def export_training_partners(request: Request, user=Depends(get_current_user)):
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=training_partners_export.csv"},
+        headers={"Content-Disposition": "attachment; filename=training_partners_export.csv"},
     )
+
 
 @app.get("/training-partners/import-template")
 @limiter.limit("5/minute")
@@ -1417,8 +1403,9 @@ def import_template_training_partners(request: Request, user=Depends(get_current
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=training_partners_import_template.csv"},
+        headers={"Content-Disposition": "attachment; filename=training_partners_import_template.csv"},
     )
+
 
 @app.get("/training-partners/import-template-xlsx")
 @limiter.limit("5/minute")
@@ -1459,8 +1446,9 @@ def import_template_xlsx_training_partners(request: Request, user=Depends(get_cu
     return Response(
         content=buffer.read(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=training_partners_import_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=training_partners_import_template.xlsx"},
     )
+
 
 @app.post("/training-partners/import")
 def import_training_partners(file: UploadFile = File(...), user=Depends(get_current_user)):
@@ -1477,9 +1465,9 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
 
     raw_headers = [h for h in list(all_rows[0]) if h and str(h).strip()]
     data_rows = all_rows[1:]
-    
+
     expected = ['first_name', 'last_name', 'title', 'organization', 'email', 'phone', 'phone_2', 'linkedin', 'location', 'industry', 'function', 'status', 'next_action', 'due_date', 'revenue', 'currency']
-    
+
     raw_dicts = [dict(zip(raw_headers, row[:len(raw_headers)])) for row in data_rows]
     reader = [map_row_to_expected(r, expected) for r in raw_dicts]
     client = get_client_for_user(user.token)
@@ -1488,7 +1476,7 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
         imported = []
         errors = []
         total = len(reader)
-        
+
         if total == 0:
             yield json.dumps({"type": "complete", "imported_count": 0, "errors": []}) + "\n"
             return
@@ -1518,7 +1506,6 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
                 continue
             existing_names.add(name_tuple)
 
-
             if status not in VALID_STATUSES:
                 errors.append(f"Row {i}: '{status}' is not a valid status")
                 yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
@@ -1540,7 +1527,7 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
                 imported.append(new_item["id"])
             except Exception as e:
                 errors.append(f"Row {i}: DB error - {str(e)}")
-            
+
             yield json.dumps({"type": "progress", "processed": i - 1, "total": total, "percentage": int((i - 1) / total * 100)}) + "\n"
 
         yield json.dumps({"type": "complete", "imported_count": len(imported), "errors": errors}) + "\n"
@@ -1548,7 +1535,7 @@ def import_training_partners(file: UploadFile = File(...), user=Depends(get_curr
     return StreamingResponse(process_stream(), media_type="application/x-ndjson")
 
 
-from db.queries import get_fractional_leader_activities, create_fractional_leader_activity
+# --- Fractional leader / investor / training partner activities, notes, attachments ---
 
 @app.get("/fractional-leaders/{leader_id}/activities")
 @limiter.limit("60/minute")
@@ -1556,6 +1543,7 @@ def get_fl_activities(request: Request, leader_id: str, user=Depends(get_current
     client = get_client_for_user(user.token)
     response = get_fractional_leader_activities(client, leader_id)
     return response.data
+
 
 @app.post("/fractional-leaders/{leader_id}/notes")
 @limiter.limit("20/minute")
@@ -1612,6 +1600,7 @@ def add_fl_note(request: Request, leader_id: str, data: dict, user=Depends(get_c
         "action_item": created_action_item
     }
 
+
 @app.delete("/fractional-leaders/{leader_id}/activities/{activity_id}")
 @limiter.limit("60/minute")
 def delete_fl_activity_endpoint(request: Request, leader_id: str, activity_id: str, user=Depends(get_current_user)):
@@ -1624,17 +1613,18 @@ def delete_fl_activity_endpoint(request: Request, leader_id: str, activity_id: s
         )
     return {"status": "ok"}
 
+
 @app.get("/fractional-leaders/{leader_id}/attachments")
 @limiter.limit("60/minute")
 def get_fl_attachments(request: Request, leader_id: str, user=Depends(get_current_user)):
     return []
+
 
 @app.post("/fractional-leaders/{leader_id}/attachments")
 @limiter.limit("20/minute")
 def add_fl_attachment(request: Request, leader_id: str, user=Depends(get_current_user)):
     return []
 
-from db.queries import get_investor_activities, create_investor_activity, get_training_partner_activities, create_training_partner_activity
 
 @app.get("/investors/{investor_id}/activities")
 @limiter.limit("60/minute")
@@ -1642,6 +1632,7 @@ def get_inv_acts(request: Request, investor_id: str, user=Depends(get_current_us
     client = get_client_for_user(user.token)
     response = get_investor_activities(client, investor_id)
     return response.data
+
 
 @app.post("/investors/{investor_id}/notes")
 @limiter.limit("20/minute")
@@ -1652,11 +1643,14 @@ def add_inv_note(request: Request, investor_id: str, data: dict, user=Depends(ge
     })
     return {"status": "ok"}
 
+
 @app.get("/investors/{investor_id}/attachments")
-def get_inv_atts(): return []
+def get_inv_atts(investor_id: str): return []
+
 
 @app.post("/investors/{investor_id}/attachments")
-def add_inv_atts(): return []
+def add_inv_atts(investor_id: str): return []
+
 
 @app.get("/training-partners/{training_partner_id}/activities")
 @limiter.limit("60/minute")
@@ -1664,6 +1658,7 @@ def get_tp_acts(request: Request, training_partner_id: str, user=Depends(get_cur
     client = get_client_for_user(user.token)
     response = get_training_partner_activities(client, training_partner_id)
     return response.data
+
 
 @app.post("/training-partners/{training_partner_id}/notes")
 @limiter.limit("20/minute")
@@ -1720,6 +1715,7 @@ def add_tp_note(request: Request, training_partner_id: str, data: dict, user=Dep
         "action_item": created_action_item
     }
 
+
 @app.delete("/training-partners/{training_partner_id}/activities/{activity_id}")
 @limiter.limit("60/minute")
 def delete_tp_activity_endpoint(request: Request, training_partner_id: str, activity_id: str, user=Depends(get_current_user)):
@@ -1732,11 +1728,14 @@ def delete_tp_activity_endpoint(request: Request, training_partner_id: str, acti
         )
     return {"status": "ok"}
 
+
 @app.get("/training-partners/{training_partner_id}/attachments")
-def get_tp_atts(): return []
+def get_tp_atts(training_partner_id: str): return []
+
 
 @app.post("/training-partners/{training_partner_id}/attachments")
-def add_tp_atts(): return []
+def add_tp_atts(training_partner_id: str): return []
+
 
 # --- Competitors ---
 
@@ -1759,18 +1758,22 @@ def get_competitors(
     response = get_competitors_page(client, page, page_size, search, db_sort_by, sort_desc)
     return {"data": response.data, "total": response.count}
 
+
 @app.post("/competitors")
 def add_competitor(comp: CompetitorCreate, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     res = create_competitor(client, comp.dict(exclude_unset=True))
     return res.data[0]
 
+
 @app.patch("/competitors/{id}")
 def edit_competitor(id: str, comp: CompetitorUpdate, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     res = update_competitor(client, id, comp.dict(exclude_unset=True))
-    if not res.data: raise HTTPException(404, "Competitor not found")
+    if not res.data:
+        raise HTTPException(404, "Competitor not found")
     return res.data[0]
+
 
 @app.delete("/competitors/{id}")
 def rm_competitor(id: str, user=Depends(require_super_admin)):
@@ -1778,12 +1781,13 @@ def rm_competitor(id: str, user=Depends(require_super_admin)):
     delete_competitor(client, id)
     return {"status": "ok"}
 
+
 @app.get("/competitors/export")
 def export_competitors(request: Request, user=Depends(require_super_admin)):
     client = get_client_for_user(user.token)
     response = get_all_competitors(client)
-    if not response.data: return Response("No data", status_code=404)
-    import io, csv
+    if not response.data:
+        return Response("No data", status_code=404)
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["id", "name", "website", "status", "created_at"])
     writer.writeheader()
@@ -1793,12 +1797,13 @@ def export_competitors(request: Request, user=Depends(require_super_admin)):
     return Response(
         content=output.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=competitors_export.csv"},
+        headers={"Content-Disposition": "attachment; filename=competitors_export.csv"},
     )
+
 
 @app.get("/competitors/import-template-xlsx")
 def import_template_xlsx_competitors(request: Request, user=Depends(get_current_user)):
-    import io, xlsxwriter
+    import xlsxwriter
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
     worksheet = workbook.add_worksheet()
@@ -1815,12 +1820,13 @@ def import_template_xlsx_competitors(request: Request, user=Depends(get_current_
     return Response(
         content=output.read(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=competitors_import_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=competitors_import_template.xlsx"},
     )
+
 
 @app.post("/competitors/import")
 def import_competitors(file: UploadFile = File(...), user=Depends(get_current_user)):
-    import io, pandas as pd
+    import pandas as pd
     client = get_client_for_user(user.token)
     try:
         contents = file.file.read()
@@ -1834,20 +1840,26 @@ def import_competitors(file: UploadFile = File(...), user=Depends(get_current_us
         records = df.to_dict('records')
         count = 0
         for r in records:
-            if not r.get("name"): continue
+            if not r.get("name"):
+                continue
             payload = {"name": str(r["name"])}
-            if r.get("website"): payload["website"] = str(r["website"])
+            if r.get("website"):
+                payload["website"] = str(r["website"])
             create_competitor(client, payload)
             count += 1
         return {"imported_count": count, "errors": []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/competitors/{competitor_id}/activities")
 def get_comp_acts(request: Request, competitor_id: str, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     response = get_competitor_activities(client, competitor_id)
     return response.data
+
 
 @app.post("/competitors/{competitor_id}/notes")
 def add_comp_note(request: Request, competitor_id: str, data: dict, user=Depends(get_current_user)):
@@ -1857,17 +1869,23 @@ def add_comp_note(request: Request, competitor_id: str, data: dict, user=Depends
     })
     return {"status": "ok"}
 
+
 @app.get("/competitors/{competitor_id}/attachments")
-def get_comp_atts(): return []
+def get_comp_atts(competitor_id: str): return []
+
 
 @app.post("/competitors/{competitor_id}/attachments")
-def add_comp_atts(): return []
+def add_comp_atts(competitor_id: str): return []
+
+
+# --- Documents ---
 
 class CreateFolderRequest(BaseModel):
     id: str
     name: str
     description: Optional[str] = ""
     parent_id: Optional[str] = None
+
 
 @app.get("/documents/folders")
 def get_all_document_folders(user=Depends(get_current_user)):
@@ -1877,6 +1895,7 @@ def get_all_document_folders(user=Depends(get_current_user)):
         return response.data or []
     except Exception:
         return []
+
 
 @app.post("/documents/folders")
 def create_document_folder(req: CreateFolderRequest, user=Depends(get_current_user)):
@@ -1892,11 +1911,13 @@ def create_document_folder(req: CreateFolderRequest, user=Depends(get_current_us
     response = create_custom_folder(client, folder_data)
     return response.data
 
+
 @app.delete("/documents/folders")
 def delete_document_folder(folder_id: str = Query(...), user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     delete_custom_folder(client, folder_id)
     return {"status": "ok"}
+
 
 @app.get("/documents")
 def get_all_documents(folder: str = Query(...), user=Depends(get_current_user)):
@@ -1904,7 +1925,7 @@ def get_all_documents(folder: str = Query(...), user=Depends(get_current_user)):
     response = get_documents_by_folder(client, folder)
     return response.data
 
-from fastapi import Form
+
 @app.post("/documents/upload")
 def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=Depends(get_current_user)):
     import uuid
@@ -1921,6 +1942,7 @@ def upload_document(folder: str = Form(...), file: UploadFile = File(...), user=
     create_document_record(client, doc_data)
     return {"status": "ok"}
 
+
 @app.get("/documents/{doc_id}/download")
 def download_document(doc_id: str, preview: bool = False, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
@@ -1930,9 +1952,10 @@ def download_document(doc_id: str, preview: bool = False, user=Depends(get_curre
     storage_path = doc.data["storage_path"]
     download_name = None if preview else doc.data.get("file_name")
     signed_url = get_signed_document_url(client, storage_path, expires_in=3600, download=download_name)
-    # Supabase python client create_signed_url returns a string if we are using an older version or dict if newer. Let's handle both.
+    # Supabase python client returns a string on older versions and a dict on newer ones.
     url_str = signed_url if isinstance(signed_url, str) else signed_url.get("signedURL", signed_url)
     return {"url": url_str}
+
 
 @app.delete("/documents/{doc_id}")
 def delete_document(doc_id: str, user=Depends(get_current_user)):
@@ -1961,8 +1984,8 @@ def delete_document(doc_id: str, user=Depends(get_current_user)):
     delete_document_record(client, doc_id)
     return {"status": "ok"}
 
+
 if __name__ == "__main__":
     import uvicorn
-    import os
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
