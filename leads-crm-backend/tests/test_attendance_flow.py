@@ -20,9 +20,9 @@ class TestAttendanceFlow(unittest.TestCase):
         }
 
     @patch("routers.attendance.get_admin_client")
-    @patch("routers.attendance.send_whatsapp_message")
-    def test_checked_in_user_typing_hi_returns_info(self, mock_wa_msg, mock_admin_client):
-        """When an employee has already checked in today, typing 'hi' provides their check-in status info."""
+    @patch("routers.attendance.send_location_request_message")
+    def test_checked_in_user_typing_hi_triggers_checkout(self, mock_loc_msg, mock_admin_client):
+        """When an employee has already checked in today, typing 'hi' triggers the checkout flow with location button."""
         mock_db = MagicMock()
         mock_admin_client.return_value = mock_db
 
@@ -57,10 +57,10 @@ class TestAttendanceFlow(unittest.TestCase):
 
         res = client.post("/api/whatsapp-webhook", json=payload)
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json().get("status"), "info_checked_in")
-        self.assertTrue(mock_wa_msg.called)
-        sent_text = mock_wa_msg.call_args[0][1]
-        self.assertIn("You checked in at", sent_text)
+        self.assertEqual(res.json().get("status"), "checkout_location_requested")
+        self.assertTrue(mock_loc_msg.called)
+        sent_text = mock_loc_msg.call_args[0][1]
+        self.assertIn("Wrapping up your shift?", sent_text)
 
     @patch("routers.attendance.get_admin_client")
     @patch("routers.attendance.send_whatsapp_message")

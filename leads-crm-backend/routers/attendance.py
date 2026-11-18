@@ -71,8 +71,8 @@ PENDING_LOCATION_TTL_MIN = 60
 # Mon=0 ... Sun=6. Add 5 for Saturday off.
 WEEKOFF_WEEKDAYS = {6}
 
-CHECKIN_WORDS = {"IN", "CHECKIN", "CHECK IN", "CHECK-IN", "CHECK_IN", "BTN_CHECKIN", "PUNCH IN"}
-CHECKOUT_WORDS = {"OUT", "CHECKOUT", "CHECK OUT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "PUNCH OUT"}
+CHECKIN_WORDS = {"IN", "CHECKIN", "CHECK IN", "CHECK-IN", "CHECK_IN", "BTN_CHECKIN", "PUNCH IN", "START", "PRESENT"}
+CHECKOUT_WORDS = {"OUT", "CHECKOUT", "CHECK OUT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "PUNCH OUT", "LEAVE", "EXIT", "BYE"}
 
 # Fallback default Alt.F Coworking coordinates (Noida / Gurgaon / Delhi NCR standard)
 DEFAULT_ALT_F_COORDINATES = {
@@ -657,14 +657,17 @@ def handle_whatsapp_webhook_verification(request: Request):
 
 
 def detect_intent(text: str, has_location: bool) -> str:
-    """location | checkin | checkout | other  (exact-match only: 'without', 'hi' etc. never match)."""
+    """location | checkin | checkout | other."""
     if has_location:
         return "location"
     t = re.sub(r"[^A-Z_\- ]", "", (text or "").upper())
     t = re.sub(r"\s+", " ", t).strip()
-    if t in CHECKOUT_WORDS:
+    if not t:
+        return "other"
+    words = set(t.split())
+    if t in CHECKOUT_WORDS or "CHECKOUT" in words or "CHECK-OUT" in words or "OUT" in words or t.startswith("CHECK OUT") or t.startswith("CHECK-OUT"):
         return "checkout"
-    if t in CHECKIN_WORDS:
+    if t in CHECKIN_WORDS or "CHECKIN" in words or "CHECK-IN" in words or "IN" in words or t.startswith("CHECK IN") or t.startswith("CHECK-IN"):
         return "checkin"
     return "other"
 
@@ -911,13 +914,14 @@ def process_whatsapp_event(payload: dict) -> dict:
             )
             return {"status": "location_verified", "within_geofence": within}
 
-        # Checked in + verified and no checkout was requested -> DO NOT check out.
+        # Already checked in & verified: location pin completes check-out
+        hours = _do_checkout(client, rec, ist_now, float(lat), float(lng), within)
         send_whatsapp_message(
             from_phone,
-            f"You're already checked in ({_fmt_time(rec['check_in_at'])}). "
-            f"To check out, tap *Check-Out* on the evening reminder or send *OUT*.",
+            f"👋 Bye {name}! Check-out recorded at {time_str}.\n"
+            f"⏱️ Work duration: *{hours} hours*\n{fence_msg(within)}\n\nHave a great evening! 🌟",
         )
-        return {"status": "location_ignored_not_requested"}
+        return {"status": "checked_out", "work_hours": hours, "within_geofence": within}
 
     # ------------------------- CHECK-IN -------------------------
     if intent == "checkin":
@@ -925,19 +929,12 @@ def process_whatsapp_event(payload: dict) -> dict:
             return say_done()
 
         if checked_in:
-            if rec.get("location_verified"):
-                send_whatsapp_message(
-                    from_phone,
-                    f"✅ You're already checked in today ({_fmt_time(rec['check_in_at'])}). "
-                    f"Check-out reminder comes at 5:30 PM.",
-                )
-                return {"status": "already_checked_in"}
-            send_location_request_message(
+            send_whatsapp_message(
                 from_phone,
-                f"✅ Check-in already recorded at {_fmt_time(rec['check_in_at'])}. "
-                f"Please share your location to verify it at {site_name}.",
+                f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+                f"Reply 'OUT' when leaving to end your shift! 🚀",
             )
-            return {"status": "location_requested_again"}
+            return {"status": "already_checked_in"}
 
         if REQUIRE_LOCATION_FOR_CHECKIN:
             send_location_request_message(from_phone, f"📍 Hi {name}, share your location to complete check-in at {site_name}.")
@@ -956,8 +953,8 @@ def process_whatsapp_event(payload: dict) -> dict:
         if not checked_in:
             send_whatsapp_message(
                 from_phone,
-                f"Hi {name}, you haven't checked in today, so there's nothing to check out of.\n"
-                f"Tap *Check-In* (or send *IN*) first.",
+                f"Hi {name}, you haven't checked in yet today, so there's nothing to check out of.\n"
+                f"Please tap *Check-In* (or reply *IN*) first.",
             )
             return {"status": "not_checked_in"}
         if checked_out:
@@ -965,20 +962,22 @@ def process_whatsapp_event(payload: dict) -> dict:
         _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
         send_location_request_message(
             from_phone,
-            f"👋 Wrapping up, {name}? Tap below to share your location and complete check-out.",
+            f"👋 Hi {name}! Wrapping up your shift? Please tap the button below to share your current location and verify your check-out at {site_name}.",
         )
         return {"status": "checkout_location_requested"}
 
-    # ------------------------- ANYTHING ELSE (never changes state) -------------------------
+    # ------------------------- ANYTHING ELSE (never sends checkin prompt if already checked in) -------------------------
     if checked_out:
         return say_done()
     if checked_in:
-        send_whatsapp_message(
+        # User already checked in today: typing "hi", "hello" or anything triggers the checkout flow as requested
+        _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
+        send_location_request_message(
             from_phone,
-            f"Hi {name}! You checked in at {_fmt_time(rec['check_in_at'])}. "
-            f"Send *OUT* when you're leaving (or wait for the 5:30 PM reminder).",
+            f"👋 Hi {name}! Wrapping up your shift? Please tap the button below to share your current location and verify your check-out at {site_name}.",
         )
-        return {"status": "info_checked_in"}
+        return {"status": "checkout_location_requested"}
+
     send_checkin_prompt_message(from_phone, name)
     return {"status": "checkin_prompt_sent"}
 
