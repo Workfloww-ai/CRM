@@ -73,6 +73,7 @@ WEEKOFF_WEEKDAYS = {6}
 
 CHECKIN_WORDS = {"IN", "CHECKIN", "CHECK IN", "CHECK-IN", "CHECK_IN", "BTN_CHECKIN", "PUNCH IN", "START", "PRESENT"}
 CHECKOUT_WORDS = {"OUT", "CHECKOUT", "CHECK OUT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "PUNCH OUT", "LEAVE", "EXIT", "BYE"}
+ACKNOWLEDGMENT_WORDS = {"OK", "OKAY", "K", "THANKS", "THANK YOU", "THX", "TY", "NOTED", "GOT IT", "SURE", "FINE", "COOL", "YES", "YUP", "YEP", "THUMBS UP", "NICE", "SUPER", "LIKE"}
 
 # Fallback default Alt.F Coworking coordinates (Noida / Gurgaon / Delhi NCR standard)
 DEFAULT_ALT_F_COORDINATES = {
@@ -657,18 +658,22 @@ def handle_whatsapp_webhook_verification(request: Request):
 
 
 def detect_intent(text: str, has_location: bool) -> str:
-    """location | checkin | checkout | other."""
+    """location | checkin | checkout | ack | other."""
     if has_location:
         return "location"
-    t = re.sub(r"[^A-Z_\- ]", "", (text or "").upper())
+    raw = (text or "").strip()
+    t = re.sub(r"[^A-Z_\- ]", "", raw.upper())
     t = re.sub(r"\s+", " ", t).strip()
     if not t:
-        return "other"
+        # Pure emojis (👍, ❤️, 🙏) or empty -> acknowledgment / reaction, not a command
+        return "ack" if raw else "other"
     words = set(t.split())
     if t in CHECKOUT_WORDS or "CHECKOUT" in words or "CHECK-OUT" in words or "OUT" in words or t.startswith("CHECK OUT") or t.startswith("CHECK-OUT"):
         return "checkout"
     if t in CHECKIN_WORDS or "CHECKIN" in words or "CHECK-IN" in words or "IN" in words or t.startswith("CHECK IN") or t.startswith("CHECK-IN"):
         return "checkin"
+    if t in ACKNOWLEDGMENT_WORDS:
+        return "ack"
     return "other"
 
 
@@ -914,14 +919,18 @@ def process_whatsapp_event(payload: dict) -> dict:
             )
             return {"status": "location_verified", "within_geofence": within}
 
-        # Already checked in & verified: location pin completes check-out
-        hours = _do_checkout(client, rec, ist_now, float(lat), float(lng), within)
+        # Checked in and location is already verified, but check-out was NOT requested -> do not checkout
         send_whatsapp_message(
             from_phone,
-            f"👋 Bye {name}! Check-out recorded at {time_str}.\n"
-            f"⏱️ Work duration: *{hours} hours*\n{fence_msg(within)}\n\nHave a great evening! 🌟",
+            f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+            f"To check out, please reply *OUT* when leaving.",
         )
-        return {"status": "checked_out", "work_hours": hours, "within_geofence": within}
+        return {"status": "location_ignored_not_requested"}
+
+    # ------------------------- ACKNOWLEDGMENT / EMOJI -------------------------
+    if intent == "ack":
+        # Ignore emojis (👍, ❤️, 🙏) and acknowledgments ("ok", "thanks") — do not trigger check-out
+        return {"status": "ack_ignored"}
 
     # ------------------------- CHECK-IN -------------------------
     if intent == "checkin":
@@ -966,11 +975,21 @@ def process_whatsapp_event(payload: dict) -> dict:
         )
         return {"status": "checkout_location_requested"}
 
-    # ------------------------- ANYTHING ELSE (never sends checkin prompt if already checked in) -------------------------
+    # ------------------------- ANYTHING ELSE -------------------------
     if checked_out:
         return say_done()
     if checked_in:
-        # User already checked in today: typing "hi", "hello" or anything triggers the checkout flow as requested
+        hours_worked = _hours_between(rec.get("check_in_at"), ist_now) or 0.0
+        # If in the morning or checked in less than 1 hour ago: do NOT trigger check-out!
+        if hours_worked < 1.0 or ist_now.hour < 13:
+            send_whatsapp_message(
+                from_phone,
+                f"✅ Hi {name}! You're checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+                f"Have a productive day! 🚀 Reply *OUT* when leaving to end your shift.",
+            )
+            return {"status": "info_checked_in"}
+
+        # Afternoon / evening follow-up (> 1 hr after check-in): trigger check-out flow
         _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
         send_location_request_message(
             from_phone,
