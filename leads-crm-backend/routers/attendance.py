@@ -73,6 +73,7 @@ WEEKOFF_WEEKDAYS = {6}
 
 CHECKIN_WORDS = {"IN", "CHECKIN", "CHECK IN", "CHECK-IN", "CHECK_IN", "BTN_CHECKIN", "PUNCH IN", "START", "PRESENT"}
 CHECKOUT_WORDS = {"OUT", "CHECKOUT", "CHECK OUT", "CHECK-OUT", "CHECK_OUT", "BTN_CHECKOUT", "PUNCH OUT", "LEAVE", "EXIT", "BYE"}
+ACKNOWLEDGMENT_WORDS = {"OK", "OKAY", "K", "THANKS", "THANK YOU", "THX", "TY", "NOTED", "GOT IT", "SURE", "FINE", "COOL", "YES", "YUP", "YEP", "THUMBS UP", "NICE", "SUPER", "LIKE"}
 
 # Fallback default Alt.F Coworking coordinates (Noida / Gurgaon / Delhi NCR standard)
 DEFAULT_ALT_F_COORDINATES = {
@@ -657,18 +658,22 @@ def handle_whatsapp_webhook_verification(request: Request):
 
 
 def detect_intent(text: str, has_location: bool) -> str:
-    """location | checkin | checkout | other."""
+    """location | checkin | checkout | ack | other."""
     if has_location:
         return "location"
-    t = re.sub(r"[^A-Z_\- ]", "", (text or "").upper())
+    raw = (text or "").strip()
+    t = re.sub(r"[^A-Z_\- ]", "", raw.upper())
     t = re.sub(r"\s+", " ", t).strip()
     if not t:
-        return "other"
+        # Pure emojis (👍, ❤️, 🙏) or empty -> acknowledgment / reaction, not a command
+        return "ack" if raw else "other"
     words = set(t.split())
     if t in CHECKOUT_WORDS or "CHECKOUT" in words or "CHECK-OUT" in words or "OUT" in words or t.startswith("CHECK OUT") or t.startswith("CHECK-OUT"):
         return "checkout"
     if t in CHECKIN_WORDS or "CHECKIN" in words or "CHECK-IN" in words or "IN" in words or t.startswith("CHECK IN") or t.startswith("CHECK-IN"):
         return "checkin"
+    if t in ACKNOWLEDGMENT_WORDS:
+        return "ack"
     return "other"
 
 
@@ -828,13 +833,23 @@ def process_whatsapp_event(payload: dict) -> dict:
     logger.info(f"WA event from {norm}: intent={intent} text={msg_info.get('text')!r}")
 
     user = find_employee_by_phone(client, norm)
-    if not user or user.get("is_active") is False:
+    if not user:
+        logger.warning(f"Unregistered phone {from_phone} (norm: {norm}) attempted to punch in")
         send_whatsapp_message(
             from_phone,
-            "⚠️ Your phone number is not registered in Flowwies HRMS.\n"
-            "Please ask HR to update your mobile number in the People & Access tab.",
+            f"⚠️ Your WhatsApp number (*{from_phone}*) is not registered in Flowwies HRMS.\n\n"
+            f"Please check that this exact number is added to your profile in the *People & Access* tab in Flowwies.",
         )
-        return {"status": "user_not_found"}
+        return {"status": "user_not_found", "phone": from_phone}
+
+    if user.get("is_active") is False:
+        logger.warning(f"Inactive user {user.get('full_name')} attempted WhatsApp attendance from {from_phone}")
+        send_whatsapp_message(
+            from_phone,
+            f"⚠️ Your Flowwies HRMS account for *{user.get('full_name')}* is currently deactivated.\n"
+            f"Please contact HR to reactivate your account.",
+        )
+        return {"status": "user_inactive", "phone": from_phone}
 
     user_id, name = user["id"], user.get("full_name") or "Team Member"
     ist_now, today_str = get_ist_now(), get_ist_today_str()
@@ -914,14 +929,18 @@ def process_whatsapp_event(payload: dict) -> dict:
             )
             return {"status": "location_verified", "within_geofence": within}
 
-        # Already checked in & verified: location pin completes check-out
-        hours = _do_checkout(client, rec, ist_now, float(lat), float(lng), within)
+        # Checked in and location is already verified, but check-out was NOT requested -> do not checkout
         send_whatsapp_message(
             from_phone,
-            f"👋 Bye {name}! Check-out recorded at {time_str}.\n"
-            f"⏱️ Work duration: *{hours} hours*\n{fence_msg(within)}\n\nHave a great evening! 🌟",
+            f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+            f"To check out, please reply *OUT* when leaving.",
         )
-        return {"status": "checked_out", "work_hours": hours, "within_geofence": within}
+        return {"status": "location_ignored_not_requested"}
+
+    # ------------------------- ACKNOWLEDGMENT / EMOJI -------------------------
+    if intent == "ack":
+        # Ignore emojis (👍, ❤️, 🙏) and acknowledgments ("ok", "thanks") — do not trigger check-out
+        return {"status": "ack_ignored"}
 
     # ------------------------- CHECK-IN -------------------------
     if intent == "checkin":
@@ -966,11 +985,21 @@ def process_whatsapp_event(payload: dict) -> dict:
         )
         return {"status": "checkout_location_requested"}
 
-    # ------------------------- ANYTHING ELSE (never sends checkin prompt if already checked in) -------------------------
+    # ------------------------- ANYTHING ELSE -------------------------
     if checked_out:
         return say_done()
     if checked_in:
-        # User already checked in today: typing "hi", "hello" or anything triggers the checkout flow as requested
+        hours_worked = _hours_between(rec.get("check_in_at"), ist_now) or 0.0
+        # If in the morning or checked in less than 1 hour ago: do NOT trigger check-out!
+        if hours_worked < 1.0 or ist_now.hour < 13:
+            send_whatsapp_message(
+                from_phone,
+                f"✅ Hi {name}! You're checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+                f"Have a productive day! 🚀 Reply *OUT* when leaving to end your shift.",
+            )
+            return {"status": "info_checked_in"}
+
+        # Afternoon / evening follow-up (> 1 hr after check-in): trigger check-out flow
         _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
         send_location_request_message(
             from_phone,
@@ -1097,6 +1126,21 @@ def _release_reminder(client, kind, user_id, date_str):
         pass
 
 
+def _fetch_active_profiles(client) -> list:
+    """Fetches active employee contacts via RPC first (works with anon key), direct table select as fallback."""
+    try:
+        r = client.rpc("get_active_employees_for_attendance").execute()
+        if r.data:
+            return r.data
+    except Exception as e:
+        logger.info(f"get_active_employees_for_attendance rpc: {e}")
+    try:
+        return client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+    except Exception as e:
+        logger.error(f"profiles select failed: {e}")
+        return []
+
+
 def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
     """09:30 IST. Template (works outside the 24h window) with a Check-In quick-reply button."""
     client = client or get_admin_client() or supabase_anon
@@ -1107,7 +1151,7 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
         if skip:
             return {"status": "skipped", "reason": skip}
 
-    users = client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+    users = _fetch_active_profiles(client)
     done = client.table("attendance_records").select("user_id, check_in_at").eq("date", today).execute().data or []
     checked_in = {r["user_id"] for r in done if r.get("check_in_at")}
     on_leave = _users_on_leave(client, today)
@@ -1122,8 +1166,6 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
         name = u.get("full_name") or "Team Member"
         try:
             ok, _ = send_checkin_reminder_template(u["phone"], name)
-            if not ok:
-                ok = send_checkin_prompt_message(u["phone"], name)
             if ok:
                 sent += 1
             else:
@@ -1147,8 +1189,15 @@ def dispatch_daily_checkout_reminders(client=None) -> dict:
 
     profs = {}
     if ids:
-        for p in client.table("profiles").select("id, full_name, phone, is_active").in_("id", ids).execute().data or []:
-            profs[p["id"]] = p
+        try:
+            for p in client.table("profiles").select("id, full_name, phone, is_active").in_("id", ids).execute().data or []:
+                profs[p["id"]] = p
+        except Exception:
+            pass
+        if not profs:
+            for p in _fetch_active_profiles(client):
+                if p.get("id") in ids:
+                    profs[p["id"]] = p
 
     sent, already, errors = 0, 0, []
     for uid in ids:
@@ -1221,8 +1270,17 @@ def auto_checkout_open_records(client=None) -> dict:
             continue
         closed += 1
 
+        p = None
         try:
             p = client.table("profiles").select("full_name, phone").eq("id", r["user_id"]).single().execute().data
+        except Exception:
+            p = None
+        if not p:
+            for ap in _fetch_active_profiles(client):
+                if ap.get("id") == r["user_id"]:
+                    p = ap
+                    break
+        try:
             if p and p.get("phone"):
                 date_label = f"yesterday ({rec_date_str})" if rec_date_str < today else "today"
                 send_whatsapp_message(

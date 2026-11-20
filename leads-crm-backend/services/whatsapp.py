@@ -289,12 +289,9 @@ def send_checkout_reminder_template(
 
 def send_checkin_prompt_message(to_phone: str, employee_name: str) -> bool:
     """
-    Check-in prompt. Used when someone says "hi" etc. (24h window is open) and as fallback
-    for the morning reminder. Order: button message -> template -> plain text.
+    Check-in prompt. Sends only the approved mobiCOMM template `employee_checkin_reminder`.
+    Ensures only ONE message arrives with the Check-In button.
     """
-    body = f"👋 Good morning {employee_name}!\n\nPlease mark your attendance for today. Tap the *Check-In* button below."
-    if send_button_message(to_phone, body, "btn_checkin", "Check-In"):
-        return True
     ok, _ = send_checkin_reminder_template(to_phone, employee_name)
     if ok:
         return True
@@ -342,6 +339,11 @@ def extract_whatsapp_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]
                 if messages and isinstance(messages, list):
                     msg = messages[0] or {}
                     msg_type = msg.get("type") or "text"
+
+                    # Ignore reactions (e.g. employee clicked "👍" on a bot message)
+                    if msg_type in ("reaction", "ephemeral") or msg.get("reaction"):
+                        logger.info(f"Ignoring WhatsApp {msg_type} event")
+                        return None
                     extracted = {
                         "from_phone": str(msg.get("from") or ""),
                         "type": msg_type,
@@ -403,6 +405,9 @@ def extract_whatsapp_message(payload: Dict[str, Any]) -> Optional[Dict[str, Any]
             return None
 
         msg_type = payload.get("type") or "text"
+        if msg_type in ("reaction", "ephemeral") or payload.get("reaction"):
+            logger.info(f"Ignoring mobiCOMM reaction event")
+            return None
         text = None
         lat = lng = loc_name = None
 
