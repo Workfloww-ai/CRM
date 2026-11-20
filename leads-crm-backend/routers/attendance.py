@@ -1141,8 +1141,6 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
         name = u.get("full_name") or "Team Member"
         try:
             ok, _ = send_checkin_reminder_template(u["phone"], name)
-            if not ok:
-                ok = send_checkin_prompt_message(u["phone"], name)
             if ok:
                 sent += 1
             else:
