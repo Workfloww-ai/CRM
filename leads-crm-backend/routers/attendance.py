@@ -1126,6 +1126,21 @@ def _release_reminder(client, kind, user_id, date_str):
         pass
 
 
+def _fetch_active_profiles(client) -> list:
+    """Fetches active employee contacts via RPC first (works with anon key), direct table select as fallback."""
+    try:
+        r = client.rpc("get_active_employees_for_attendance").execute()
+        if r.data:
+            return r.data
+    except Exception as e:
+        logger.info(f"get_active_employees_for_attendance rpc: {e}")
+    try:
+        return client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+    except Exception as e:
+        logger.error(f"profiles select failed: {e}")
+        return []
+
+
 def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
     """09:30 IST. Template (works outside the 24h window) with a Check-In quick-reply button."""
     client = client or get_admin_client() or supabase_anon
@@ -1136,7 +1151,7 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
         if skip:
             return {"status": "skipped", "reason": skip}
 
-    users = client.table("profiles").select("id, full_name, phone").eq("is_active", True).execute().data or []
+    users = _fetch_active_profiles(client)
     done = client.table("attendance_records").select("user_id, check_in_at").eq("date", today).execute().data or []
     checked_in = {r["user_id"] for r in done if r.get("check_in_at")}
     on_leave = _users_on_leave(client, today)
@@ -1174,8 +1189,15 @@ def dispatch_daily_checkout_reminders(client=None) -> dict:
 
     profs = {}
     if ids:
-        for p in client.table("profiles").select("id, full_name, phone, is_active").in_("id", ids).execute().data or []:
-            profs[p["id"]] = p
+        try:
+            for p in client.table("profiles").select("id, full_name, phone, is_active").in_("id", ids).execute().data or []:
+                profs[p["id"]] = p
+        except Exception:
+            pass
+        if not profs:
+            for p in _fetch_active_profiles(client):
+                if p.get("id") in ids:
+                    profs[p["id"]] = p
 
     sent, already, errors = 0, 0, []
     for uid in ids:
@@ -1248,8 +1270,17 @@ def auto_checkout_open_records(client=None) -> dict:
             continue
         closed += 1
 
+        p = None
         try:
             p = client.table("profiles").select("full_name, phone").eq("id", r["user_id"]).single().execute().data
+        except Exception:
+            p = None
+        if not p:
+            for ap in _fetch_active_profiles(client):
+                if ap.get("id") == r["user_id"]:
+                    p = ap
+                    break
+        try:
             if p and p.get("phone"):
                 date_label = f"yesterday ({rec_date_str})" if rec_date_str < today else "today"
                 send_whatsapp_message(
