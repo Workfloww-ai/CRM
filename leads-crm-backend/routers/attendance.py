@@ -833,13 +833,23 @@ def process_whatsapp_event(payload: dict) -> dict:
     logger.info(f"WA event from {norm}: intent={intent} text={msg_info.get('text')!r}")
 
     user = find_employee_by_phone(client, norm)
-    if not user or user.get("is_active") is False:
+    if not user:
+        logger.warning(f"Unregistered phone {from_phone} (norm: {norm}) attempted to punch in")
         send_whatsapp_message(
             from_phone,
-            "⚠️ Your phone number is not registered in Flowwies HRMS.\n"
-            "Please ask HR to update your mobile number in the People & Access tab.",
+            f"⚠️ Your WhatsApp number (*{from_phone}*) is not registered in Flowwies HRMS.\n\n"
+            f"Please check that this exact number is added to your profile in the *People & Access* tab in Flowwies.",
         )
-        return {"status": "user_not_found"}
+        return {"status": "user_not_found", "phone": from_phone}
+
+    if user.get("is_active") is False:
+        logger.warning(f"Inactive user {user.get('full_name')} attempted WhatsApp attendance from {from_phone}")
+        send_whatsapp_message(
+            from_phone,
+            f"⚠️ Your Flowwies HRMS account for *{user.get('full_name')}* is currently deactivated.\n"
+            f"Please contact HR to reactivate your account.",
+        )
+        return {"status": "user_inactive", "phone": from_phone}
 
     user_id, name = user["id"], user.get("full_name") or "Team Member"
     ist_now, today_str = get_ist_now(), get_ist_today_str()
