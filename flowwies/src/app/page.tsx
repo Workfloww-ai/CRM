@@ -2223,30 +2223,30 @@ export default function FlowwiesApp() {
                     <div className="flex items-center gap-2">
                       {isCheckedOut ? (
                         todayRec?.auto_checked_out ? (
-                          <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400 flex items-center gap-1">
-                            <AlertTriangle size={13} className="text-amber-600" /> Auto Checked-Out
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-900 border border-blue-400 flex items-center gap-1">
-                            <CheckCircle2 size={13} /> Day Completed
-                          </span>
-                        )
-                      ) : isCheckedIn ? (
-                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-400 flex items-center gap-1">
-                          <Radio size={13} className="animate-pulse text-emerald-600" /> Checked In
-                        </span>
-                      ) : attendanceToday?.is_on_leave ? (
-                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-purple-100 text-purple-900 border border-purple-400">
-                          🏖 On Approved Leave
-                        </span>
-                      ) : attendanceToday?.is_holiday ? (
-                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
-                          🎉 {attendanceToday?.holiday_info?.name || "Holiday"}
-                        </span>
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400 flex items-center gap-1">
+                        <AlertTriangle size={13} className="text-amber-600" /> Auto Checked-Out
+                      </span>
                       ) : (
-                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700 border border-gray-300">
-                          ⚪ Not Marked Yet
-                        </span>
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-900 border border-blue-400 flex items-center gap-1">
+                        <CheckCircle2 size={13} /> Day Completed
+                      </span>
+                      )
+                      ) : isCheckedIn ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-400 flex items-center gap-1">
+                        <Radio size={13} className="animate-pulse text-emerald-600" /> Checked In
+                      </span>
+                      ) : attendanceToday?.is_on_leave ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-purple-100 text-purple-900 border border-purple-400">
+                        🏖 On Approved Leave
+                      </span>
+                      ) : attendanceToday?.is_holiday ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
+                        🎉 {attendanceToday?.holiday_info?.name || "Holiday"}
+                      </span>
+                      ) : (
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700 border border-gray-300">
+                        ⚪ Not Marked Yet
+                      </span>
                       )}
                     </div>
                   </div>
