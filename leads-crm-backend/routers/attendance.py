@@ -142,7 +142,7 @@ def get_default_shift(client):
             return any_shift.data[0]
     except Exception:
         pass
-    return {"id": None, "name": "General", "start_time": "09:00:00", "end_time": "18:00:00", "grace_minutes": 15}
+    return {"id": None, "name": "General", "start_time": "09:00:00", "end_time": "19:00:00", "grace_minutes": 15}
 
 
 def check_geofence_with_postgis(client, lat: float, lng: float, site_id: str) -> bool:
@@ -1106,16 +1106,22 @@ def _users_on_leave(client, today_str) -> set:
         return set()
 
 
-def _claim_reminder(client, kind, user_id, date_str) -> bool:
-    """True only for the first caller per (date, kind, user). Fails CLOSED so a missing table cannot cause spam."""
+def _claim_reminder(client, kind, user_id, date_str) -> tuple[bool, Optional[str]]:
+    """
+    Returns (True, None) if successfully claimed.
+    Returns (False, None) if already claimed for today (duplicate).
+    Returns (False, error_msg) if DB insert failed with an unexpected error.
+    """
     try:
         client.table("attendance_reminder_log").insert(
             {"reminder_date": date_str, "kind": kind, "user_id": user_id}).execute()
-        return True
+        return True, None
     except Exception as e:
-        if not _is_dup_error(e):
-            logger.error(f"attendance_reminder_log error (did you run the migration?): {e}")
-        return False
+        if _is_dup_error(e):
+            return False, None
+        err_msg = f"attendance_reminder_log error: {e}"
+        logger.error(err_msg)
+        return False, err_msg
 
 
 def _release_reminder(client, kind, user_id, date_str):
@@ -1160,8 +1166,12 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
     for u in users:
         if u["id"] in checked_in or u["id"] in on_leave or not u.get("phone"):
             continue
-        if not _claim_reminder(client, "checkin", u["id"], today):
-            already += 1
+        claimed, claim_err = _claim_reminder(client, "checkin", u["id"], today)
+        if not claimed:
+            if claim_err:
+                errors.append(f"{u.get('full_name') or 'User'}: {claim_err}")
+            else:
+                already += 1
             continue
         name = u.get("full_name") or "Team Member"
         try:
@@ -1204,8 +1214,12 @@ def dispatch_daily_checkout_reminders(client=None) -> dict:
         p = profs.get(uid) or {}
         if p.get("is_active") is False or not p.get("phone"):
             continue
-        if not _claim_reminder(client, "checkout", uid, today):
-            already += 1
+        claimed, claim_err = _claim_reminder(client, "checkout", uid, today)
+        if not claimed:
+            if claim_err:
+                errors.append(f"{p.get('full_name') or 'User'}: {claim_err}")
+            else:
+                already += 1
             continue
         name = p.get("full_name") or "Team Member"
         try:
@@ -1236,9 +1250,9 @@ def auto_checkout_open_records(client=None) -> dict:
 
     shift = get_default_shift(client)
     try:
-        eh, em = [int(x) for x in str(shift.get("end_time", "18:00:00")).split(":")[:2]]
+        eh, em = [int(x) for x in str(shift.get("end_time", "19:00:00")).split(":")[:2]]
     except Exception:
-        eh, em = 18, 0
+        eh, em = 19, 0
 
     open_recs = client.table("attendance_records").select("id, user_id, date, check_in_at") \
         .lte("date", today).not_.is_("check_in_at", "null").is_("check_out_at", "null").execute().data or []
