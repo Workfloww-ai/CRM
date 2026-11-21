@@ -1106,16 +1106,22 @@ def _users_on_leave(client, today_str) -> set:
         return set()
 
 
-def _claim_reminder(client, kind, user_id, date_str) -> bool:
-    """True only for the first caller per (date, kind, user). Fails CLOSED so a missing table cannot cause spam."""
+def _claim_reminder(client, kind, user_id, date_str) -> tuple[bool, Optional[str]]:
+    """
+    Returns (True, None) if successfully claimed.
+    Returns (False, None) if already claimed for today (duplicate).
+    Returns (False, error_msg) if DB insert failed with an unexpected error.
+    """
     try:
         client.table("attendance_reminder_log").insert(
             {"reminder_date": date_str, "kind": kind, "user_id": user_id}).execute()
-        return True
+        return True, None
     except Exception as e:
-        if not _is_dup_error(e):
-            logger.error(f"attendance_reminder_log error (did you run the migration?): {e}")
-        return False
+        if _is_dup_error(e):
+            return False, None
+        err_msg = f"attendance_reminder_log error: {e}"
+        logger.error(err_msg)
+        return False, err_msg
 
 
 def _release_reminder(client, kind, user_id, date_str):
@@ -1160,8 +1166,12 @@ def dispatch_daily_checkin_reminders(client=None, force: bool = False) -> dict:
     for u in users:
         if u["id"] in checked_in or u["id"] in on_leave or not u.get("phone"):
             continue
-        if not _claim_reminder(client, "checkin", u["id"], today):
-            already += 1
+        claimed, claim_err = _claim_reminder(client, "checkin", u["id"], today)
+        if not claimed:
+            if claim_err:
+                errors.append(f"{u.get('full_name') or 'User'}: {claim_err}")
+            else:
+                already += 1
             continue
         name = u.get("full_name") or "Team Member"
         try:
@@ -1204,8 +1214,12 @@ def dispatch_daily_checkout_reminders(client=None) -> dict:
         p = profs.get(uid) or {}
         if p.get("is_active") is False or not p.get("phone"):
             continue
-        if not _claim_reminder(client, "checkout", uid, today):
-            already += 1
+        claimed, claim_err = _claim_reminder(client, "checkout", uid, today)
+        if not claimed:
+            if claim_err:
+                errors.append(f"{p.get('full_name') or 'User'}: {claim_err}")
+            else:
+                already += 1
             continue
         name = p.get("full_name") or "Team Member"
         try:
