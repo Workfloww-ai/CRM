@@ -26,6 +26,6 @@ create policy "allow_all_attendance_reminder_log" on public.attendance_reminder_
 -- 4. Grant permissions
 grant all on public.attendance_reminder_log to anon, authenticated, service_role;
 
--- 5. Optional: Update default shift end time to 19:00 (7:00 PM) if office closes at 7 PM
--- Uncomment the line below if office shift ends at 7:00 PM:
--- update public.attendance_shifts set end_time = '19:00:00' where is_default = true;
+-- 5. Update default shift end time to 19:00 (7:00 PM) for 7 PM auto-checkout
+update public.attendance_shifts set end_time = '19:00:00' where is_default = true;
+

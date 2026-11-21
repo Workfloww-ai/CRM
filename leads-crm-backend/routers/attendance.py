@@ -142,7 +142,7 @@ def get_default_shift(client):
             return any_shift.data[0]
     except Exception:
         pass
-    return {"id": None, "name": "General", "start_time": "09:00:00", "end_time": "18:00:00", "grace_minutes": 15}
+    return {"id": None, "name": "General", "start_time": "09:00:00", "end_time": "19:00:00", "grace_minutes": 15}
 
 
 def check_geofence_with_postgis(client, lat: float, lng: float, site_id: str) -> bool:
@@ -1250,9 +1250,9 @@ def auto_checkout_open_records(client=None) -> dict:
 
     shift = get_default_shift(client)
     try:
-        eh, em = [int(x) for x in str(shift.get("end_time", "18:00:00")).split(":")[:2]]
+        eh, em = [int(x) for x in str(shift.get("end_time", "19:00:00")).split(":")[:2]]
     except Exception:
-        eh, em = 18, 0
+        eh, em = 19, 0
 
     open_recs = client.table("attendance_records").select("id, user_id, date, check_in_at") \
         .lte("date", today).not_.is_("check_in_at", "null").is_("check_out_at", "null").execute().data or []
