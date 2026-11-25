@@ -241,6 +241,9 @@ def get_today_attendance(user=Depends(get_current_user)):
     is_holiday = bool(holiday.data)
     holiday_info = holiday.data[0] if is_holiday else None
 
+    off_reason = check_non_working_day(client, get_ist_now(), today_str)
+    is_off_day = bool(off_reason)
+
     sites = client.table("attendance_sites").select("*").eq("is_active", True).execute().data or []
 
     return {
@@ -252,6 +255,8 @@ def get_today_attendance(user=Depends(get_current_user)):
         "leave_info": leave_info,
         "is_holiday": is_holiday,
         "holiday_info": holiday_info,
+        "is_off_day": is_off_day,
+        "off_day_reason": off_reason,
         "shift": shift,
         "available_sites": sites,
     }
@@ -262,6 +267,10 @@ def employee_check_in(body: CheckInRequest, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
     today_str = get_ist_today_str()
     ist_now = get_ist_now()
+
+    off_reason = check_non_working_day(client, ist_now, today_str)
+    if off_reason:
+        raise HTTPException(status_code=400, detail=f"Cannot check in: Today is {off_reason}")
 
     existing = client.table("attendance_records") \
         .select("*").eq("user_id", user.id).eq("date", today_str).execute()
@@ -536,6 +545,7 @@ def get_monthly_attendance_report(
             "total_hours": round(total_work_hours, 2),
             "avg_daily_hours": avg_hours,
             "auto_checkout_days": sum(1 for r in emp_records if r.get("auto_checked_out")),
+            "missing_checkout_days": sum(1 for r in emp_records if r.get("check_in_at") and not r.get("check_out_at")),
         })
 
     return {"month": month, "total_holidays": len(holidays), "holidays": holidays, "employees": report_rows}
@@ -775,6 +785,14 @@ def record_attendance_in_supabase(client, user_id: str, today_str: str, check_in
 
 
 def _do_checkin(client, user_id, today_str, ist_now, lat, lng, within, site_id, shift):
+    # Check if a check-in already exists today in database to prevent duplicate check-in
+    try:
+        existing = client.table("attendance_records").select("*").eq("user_id", user_id).eq("date", today_str).execute().data
+        if existing and existing[0].get("check_in_at"):
+            return existing[0], False, True  # (record, is_late, already_checked_in=True)
+    except Exception as e:
+        logger.warning(f"pre-checkin lookup failed: {e}")
+
     late = is_checkin_late(shift, ist_now)
     saved = record_attendance_in_supabase(
         client, user_id=user_id, today_str=today_str, check_in_iso=ist_now.isoformat(),
@@ -790,7 +808,7 @@ def _do_checkin(client, user_id, today_str, ist_now, lat, lng, within, site_id, 
         }).eq("user_id", user_id).eq("date", today_str).execute()
     except Exception as e:
         logger.error(f"could not set verification state: {e}")
-    return saved, late
+    return saved, late, False
 
 
 def _do_checkout(client, rec, ist_now, lat, lng, within):
@@ -855,6 +873,16 @@ def process_whatsapp_event(payload: dict) -> dict:
     ist_now, today_str = get_ist_now(), get_ist_today_str()
     time_str = ist_now.strftime("%I:%M %p")
 
+    # 0. Check if today is a non-working day (Sunday, 2nd/4th Saturday, or Company Holiday)
+    off_reason = check_non_working_day(client, ist_now, today_str)
+    if off_reason and intent in ("checkin", "location"):
+        send_whatsapp_message(
+            from_phone,
+            f"👋 Hi {name}! Today is {off_reason}. Attendance check-in is not required today.\n\n"
+            f"Enjoy your day off! 🎉",
+        )
+        return {"status": "off_day", "reason": off_reason}
+
     rows = []
     try:
         rows = client.table("attendance_records").select("*").eq("user_id", user_id).eq("date", today_str).execute().data or []
@@ -893,11 +921,18 @@ def process_whatsapp_event(payload: dict) -> dict:
             return say_done()
 
         if not checked_in:  # pin arrived first -> it is a check-in
-            _, late = _do_checkin(client, user_id, today_str, ist_now, float(lat), float(lng), within, site_id, shift)
+            saved, late, was_already = _do_checkin(client, user_id, today_str, ist_now, float(lat), float(lng), within, site_id, shift)
+            if was_already:
+                send_whatsapp_message(
+                    from_phone,
+                    f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
+                    f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
+                )
+                return {"status": "already_checked_in"}
             send_whatsapp_message(
                 from_phone,
                 f"✅ Good morning {name}! Check-in recorded at {time_str}{' (Late)' if late else ''}.\n"
-                f"{fence_msg(within)}\n\nWe'll remind you at 5:30 PM to check out. 🚀",
+                f"{fence_msg(within)}\n\nWe'll remind you at 6:00 PM to check out. 🚀",
             )
             return {"status": "check_in_recorded", "within_geofence": within}
 
@@ -950,8 +985,8 @@ def process_whatsapp_event(payload: dict) -> dict:
         if checked_in:
             send_whatsapp_message(
                 from_phone,
-                f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
-                f"Reply 'OUT' when leaving to end your shift! 🚀",
+                f"✅ Hi {name}! You're already checked in today at {_fmt_time(rec['check_in_at'])}.\n\n"
+                f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
             )
             return {"status": "already_checked_in"}
 
@@ -959,7 +994,15 @@ def process_whatsapp_event(payload: dict) -> dict:
             send_location_request_message(from_phone, f"📍 Hi {name}, share your location to complete check-in at {site_name}.")
             return {"status": "checkin_location_requested"}
 
-        _, late = _do_checkin(client, user_id, today_str, ist_now, None, None, False, site_id, shift)
+        saved, late, was_already = _do_checkin(client, user_id, today_str, ist_now, None, None, False, site_id, shift)
+        if was_already:
+            send_whatsapp_message(
+                from_phone,
+                f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
+                f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
+            )
+            return {"status": "already_checked_in"}
+
         send_location_request_message(
             from_phone,
             f"✅ {name}, check-in recorded at {time_str}{' (Late)' if late else ''}.\n"
@@ -1086,15 +1129,43 @@ def _cron_guard(request: Request):
             raise HTTPException(status_code=403, detail="Forbidden")
 
 
-def _non_working_day(client, today_str):
-    if get_ist_now().weekday() in WEEKOFF_WEEKDAYS:
-        return "weekly_off"
+def check_non_working_day(client, dt: Optional[datetime] = None, today_str: Optional[str] = None) -> Optional[str]:
+    """
+    Returns reason if non-working day, else None.
+    Non-working days:
+      1. Every Sunday (weekday == 6)
+      2. 2nd and 4th Saturday of the month (weekday == 5, (day-1)//7 + 1 in (2, 4))
+      3. Company holidays from company_holidays table
+    """
+    dt = dt or get_ist_now()
+    today_str = today_str or dt.strftime("%Y-%m-%d")
+
+    # Sunday
+    if dt.weekday() == 6:
+        return "Sunday (Weekly Off)"
+
+    # 2nd or 4th Saturday
+    if dt.weekday() == 5:
+        sat_num = (dt.day - 1) // 7 + 1
+        if sat_num in (2, 4):
+            ordinal = "2nd" if sat_num == 2 else "4th"
+            return f"{ordinal} Saturday (Weekly Off)"
+
+    # Company holiday
     try:
-        if client.table("company_holidays").select("*").eq("holiday_date", today_str).execute().data:
-            return "holiday"
+        if client:
+            res = client.table("company_holidays").select("name").eq("holiday_date", today_str).execute()
+            if res.data:
+                h_name = res.data[0].get("name") or "Company Holiday"
+                return f"Holiday ({h_name})"
     except Exception as e:
-        logger.warning(f"holiday lookup: {e}")
+        logger.warning(f"company_holidays lookup error: {e}")
+
     return None
+
+
+def _non_working_day(client, today_str):
+    return check_non_working_day(client, get_ist_now(), today_str)
 
 
 def _users_on_leave(client, today_str) -> set:
@@ -1241,48 +1312,27 @@ def dispatch_daily_checkout_reminders(client=None) -> dict:
 
 def auto_checkout_open_records(client=None) -> dict:
     """
-    Auto-closes unclosed shifts (either from today or from previous days like yesterday).
-    Runs at 7:00 AM IST (to close yesterday's missed checkouts) or 19:00/20:00 IST.
+    Flags unclosed shifts from past dates (missing check-outs).
+    Does NOT auto-close with fake check_out_at or fake work hours.
+    Flags them as 'Missing Check-Out' so dashboard and HR clearly see unclosed shifts.
     """
     client = client or get_admin_client() or supabase_anon
-    now = get_ist_now()
     today = get_ist_today_str()
 
-    shift = get_default_shift(client)
-    try:
-        eh, em = [int(x) for x in str(shift.get("end_time", "19:00:00")).split(":")[:2]]
-    except Exception:
-        eh, em = 19, 0
-
     open_recs = client.table("attendance_records").select("id, user_id, date, check_in_at") \
-        .lte("date", today).not_.is_("check_in_at", "null").is_("check_out_at", "null").execute().data or []
+        .lt("date", today).not_.is_("check_in_at", "null").is_("check_out_at", "null").execute().data or []
 
-    closed = 0
+    flagged = 0
     for r in open_recs:
         rec_date_str = r.get("date") or today
-        try:
-            rec_y, rec_m, rec_d = [int(x) for x in rec_date_str.split("-")[:3]]
-            shift_end_for_rec = now.replace(year=rec_y, month=rec_m, day=rec_d, hour=eh, minute=em, second=0, microsecond=0)
-        except Exception:
-            shift_end_for_rec = now.replace(hour=eh, minute=em, second=0, microsecond=0)
-
-        try:
-            in_dt = _to_ist(r["check_in_at"])
-        except Exception:
-            in_dt = None
-        out_dt = shift_end_for_rec if (in_dt and in_dt < shift_end_for_rec) else now
-
         upd = _update_record(client, r["id"], {
-            "check_out_at": out_dt.isoformat(),
-            "status": "checked_out",
-            "work_hours": _hours_between(r["check_in_at"], out_dt),
-            "auto_checked_out": True,
             "pending_action": None,
             "pending_action_at": None,
+            "notes": "Missing Check-Out",
         })
         if upd is None:
             continue
-        closed += 1
+        flagged += 1
 
         p = None
         try:
@@ -1296,16 +1346,14 @@ def auto_checkout_open_records(client=None) -> dict:
                     break
         try:
             if p and p.get("phone"):
-                date_label = f"yesterday ({rec_date_str})" if rec_date_str < today else "today"
                 send_whatsapp_message(
                     p["phone"],
-                    f"Hi {p.get('full_name') or ''}, you didn't check out {date_label}, so your shift was automatically "
-                    f"closed at {out_dt.strftime('%I:%M %p')}. If that's wrong, please tell HR.",
+                    f"Hi {p.get('full_name') or ''}, you didn't check out on {rec_date_str}. Your attendance record has been flagged on the dashboard as 'Missing Check-Out'. Please inform HR to regularize your hours.",
                 )
         except Exception:
             pass
 
-    return {"status": "success", "date": today, "auto_checked_out": closed}
+    return {"status": "success", "date": today, "flagged_missing_checkout": flagged}
 
 
 @router.post("/send-checkout-reminder")
