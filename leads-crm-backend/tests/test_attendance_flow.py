@@ -180,6 +180,76 @@ class TestAttendanceFlow(unittest.TestCase):
         sent_text = mock_wa_msg.call_args[0][1]
         self.assertIn("haven't checked in", sent_text)
 
+    @patch("routers.attendance.get_admin_client")
+    @patch("routers.attendance.send_whatsapp_message")
+    @patch("routers.attendance.check_non_working_day")
+    def test_off_day_checkin_is_blocked(self, mock_non_working, mock_wa_msg, mock_admin_client):
+        """On Sundays, 2nd/4th Saturdays, or holidays, check-in is not permitted and friendly message is returned."""
+        mock_non_working.return_value = "Sunday (Weekly Off)"
+        mock_db = MagicMock()
+        mock_admin_client.return_value = mock_db
+        mock_db.rpc.return_value.execute.return_value.data = [self.mock_user]
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "changes": [{
+                    "value": {
+                        "messages": [{
+                            "from": "918527880288",
+                            "text": {"body": "Check-In"},
+                            "type": "text"
+                        }]
+                    }
+                }]
+            }]
+        }
+
+        res = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json().get("status"), "off_day")
+        sent_text = mock_wa_msg.call_args[0][1]
+        self.assertIn("Weekly Off", sent_text)
+
+    @patch("routers.attendance.get_admin_client")
+    @patch("routers.attendance.send_whatsapp_message")
+    @patch("routers.attendance.check_non_working_day", return_value=None)
+    def test_duplicate_checkin_prevented(self, mock_non_working, mock_wa_msg, mock_admin_client):
+        """When an employee has already checked in today, a second check-in does not re-prompt or overwrite."""
+        mock_db = MagicMock()
+        mock_admin_client.return_value = mock_db
+        mock_db.rpc.return_value.execute.return_value.data = [self.mock_user]
+
+        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{
+            "id": "rec-1",
+            "user_id": "emp-uuid-1",
+            "date": datetime.now(IST).strftime("%Y-%m-%d"),
+            "check_in_at": "2026-11-25T09:12:00+05:30",
+            "check_out_at": None,
+            "location_verified": True
+        }]
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "changes": [{
+                    "value": {
+                        "messages": [{
+                            "from": "918527880288",
+                            "text": {"body": "Check-In"},
+                            "type": "text"
+                        }]
+                    }
+                }]
+            }]
+        }
+
+        res = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json().get("status"), "already_checked_in")
+        sent_text = mock_wa_msg.call_args[0][1]
+        self.assertIn("already checked in", sent_text)
+
 
 if __name__ == "__main__":
     unittest.main()
