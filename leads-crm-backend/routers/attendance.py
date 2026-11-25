@@ -22,6 +22,8 @@ import re
 import csv
 import hmac
 import json
+import time
+import threading
 import logging
 from calendar import monthrange
 from datetime import datetime, timezone, timedelta
@@ -83,6 +85,50 @@ DEFAULT_ALT_F_COORDINATES = {
     "longitude": 77.4054,
     "radius_meters": 200,
 }
+
+# ----------------- IN-MEMORY DEDUPLICATION & THROTTLING -----------------
+# Prevents duplicate webhooks, duplicate button clicks, and outbound spam
+_DEDUPE_LOCK = threading.Lock()
+_PROCESSED_MSG_CACHE: dict[str, float] = {}   # message_id -> timestamp (expire after 10 min)
+_PHONE_LAST_EVENT: dict[tuple[str, str], float] = {}  # (norm_phone, action_kind) -> timestamp
+_CLAIMED_REMINDERS_MEM: set[tuple[str, str, str]] = set()  # (kind, user_id, date_str)
+
+
+def is_duplicate_message_id(message_id: str) -> bool:
+    """Returns True if message_id was seen in the last 10 minutes, False otherwise."""
+    if not message_id:
+        return False
+    now = time.time()
+    with _DEDUPE_LOCK:
+        # Purge entries older than 10 minutes
+        expired = [k for k, v in _PROCESSED_MSG_CACHE.items() if now - v > 600]
+        for k in expired:
+            _PROCESSED_MSG_CACHE.pop(k, None)
+        if message_id in _PROCESSED_MSG_CACHE:
+            return True
+        _PROCESSED_MSG_CACHE[message_id] = now
+        return False
+
+
+def throttle_outbound(norm_phone: str, action_kind: str, min_interval_seconds: int = 60) -> bool:
+    """
+    Returns True if this action kind was ALREADY sent to this phone within min_interval_seconds.
+    If False, records current timestamp and allows sending.
+    """
+    if not norm_phone:
+        return False
+    now = time.time()
+    key = (norm_phone, action_kind)
+    with _DEDUPE_LOCK:
+        # Purge entries older than 1 hour
+        expired = [k for k, v in _PHONE_LAST_EVENT.items() if now - v > 3600]
+        for k in expired:
+            _PHONE_LAST_EVENT.pop(k, None)
+        last_time = _PHONE_LAST_EVENT.get(key)
+        if last_time and (now - last_time) < min_interval_seconds:
+            return True
+        _PHONE_LAST_EVENT[key] = now
+        return False
 
 
 # =========================================================================
@@ -688,9 +734,14 @@ def detect_intent(text: str, has_location: bool) -> str:
 
 
 def already_processed(client, message_id) -> bool:
-    """Providers retry webhooks; insert-or-fail on the message id makes processing idempotent."""
+    """Providers retry webhooks; in-memory cache + insert-or-fail makes processing idempotent."""
     if not message_id:
         return False
+    # 1. Fast in-memory dedupe (catches concurrent webhooks and fast retries instantly)
+    if is_duplicate_message_id(str(message_id)):
+        return True
+
+    # 2. Database dedupe
     try:
         client.table("whatsapp_processed_messages").insert({"message_id": str(message_id)}).execute()
         return False
@@ -876,11 +927,12 @@ def process_whatsapp_event(payload: dict) -> dict:
     # 0. Check if today is a non-working day (Sunday, 2nd/4th Saturday, or Company Holiday)
     off_reason = check_non_working_day(client, ist_now, today_str)
     if off_reason and intent in ("checkin", "location"):
-        send_whatsapp_message(
-            from_phone,
-            f"👋 Hi {name}! Today is {off_reason}. Attendance check-in is not required today.\n\n"
-            f"Enjoy your day off! 🎉",
-        )
+        if not throttle_outbound(norm, "off_day", 300):
+            send_whatsapp_message(
+                from_phone,
+                f"👋 Hi {name}! Today is {off_reason}. Attendance check-in is not required today.\n\n"
+                f"Enjoy your day off! 🎉",
+            )
         return {"status": "off_day", "reason": off_reason}
 
     rows = []
@@ -904,6 +956,8 @@ def process_whatsapp_event(payload: dict) -> dict:
         return f"✅ Inside {site_name} geo-fence." if ok else f"⚠️ Outside office radius of {site_name}."
 
     def say_done():
+        if throttle_outbound(norm, "say_done", 300):
+            return {"status": "already_checked_out"}
         hrs = rec.get("work_hours")
         extra = f"\n⏱️ Work duration: *{hrs} hours*" if hrs is not None else ""
         send_whatsapp_message(
@@ -921,13 +975,16 @@ def process_whatsapp_event(payload: dict) -> dict:
             return say_done()
 
         if not checked_in:  # pin arrived first -> it is a check-in
+            if throttle_outbound(norm, "checkin_complete", 120):
+                return {"status": "already_checked_in"}
             saved, late, was_already = _do_checkin(client, user_id, today_str, ist_now, float(lat), float(lng), within, site_id, shift)
             if was_already:
-                send_whatsapp_message(
-                    from_phone,
-                    f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
-                    f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
-                )
+                if not throttle_outbound(norm, "already_checked_in", 300):
+                    send_whatsapp_message(
+                        from_phone,
+                        f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
+                        f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
+                    )
                 return {"status": "already_checked_in"}
             send_whatsapp_message(
                 from_phone,
@@ -944,6 +1001,8 @@ def process_whatsapp_event(payload: dict) -> dict:
                 fresh = False
 
         if rec.get("pending_action") == "checkout" and fresh:
+            if throttle_outbound(norm, "checkout_complete", 120):
+                return {"status": "already_checked_out"}
             hours = _do_checkout(client, rec, ist_now, float(lat), float(lng), within)
             send_whatsapp_message(
                 from_phone,
@@ -958,18 +1017,20 @@ def process_whatsapp_event(payload: dict) -> dict:
                 "check_in_within_geofence": within, "location_verified": True,
                 "pending_action": None, "pending_action_at": None,
             })
-            send_whatsapp_message(
-                from_phone,
-                f"📍 Location verified for your {_fmt_time(rec['check_in_at'])} check-in.\n{fence_msg(within)}",
-            )
+            if not throttle_outbound(norm, "location_verified", 300):
+                send_whatsapp_message(
+                    from_phone,
+                    f"📍 Location verified for your {_fmt_time(rec['check_in_at'])} check-in.\n{fence_msg(within)}",
+                )
             return {"status": "location_verified", "within_geofence": within}
 
         # Checked in and location is already verified, but check-out was NOT requested -> do not checkout
-        send_whatsapp_message(
-            from_phone,
-            f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
-            f"To check out, please reply *OUT* when leaving.",
-        )
+        if not throttle_outbound(norm, "location_ignored", 300):
+            send_whatsapp_message(
+                from_phone,
+                f"✅ Hi {name}, you're already checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+                f"To check out, please reply *OUT* when leaving.",
+            )
         return {"status": "location_ignored_not_requested"}
 
     # ------------------------- ACKNOWLEDGMENT / EMOJI -------------------------
@@ -983,12 +1044,17 @@ def process_whatsapp_event(payload: dict) -> dict:
             return say_done()
 
         if checked_in:
-            send_whatsapp_message(
-                from_phone,
-                f"✅ Hi {name}! You're already checked in today at {_fmt_time(rec['check_in_at'])}.\n\n"
-                f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
-            )
+            if not throttle_outbound(norm, "already_checked_in", 300):
+                send_whatsapp_message(
+                    from_phone,
+                    f"✅ Hi {name}! You're already checked in today at {_fmt_time(rec['check_in_at'])}.\n\n"
+                    f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
+                )
             return {"status": "already_checked_in"}
+
+        if throttle_outbound(norm, "checkin_prompt", 120):
+            logger.info(f"Checkin prompt already sent recently for {norm}")
+            return {"status": "checkin_already_pending"}
 
         if REQUIRE_LOCATION_FOR_CHECKIN:
             send_location_request_message(from_phone, f"📍 Hi {name}, share your location to complete check-in at {site_name}.")
@@ -996,11 +1062,12 @@ def process_whatsapp_event(payload: dict) -> dict:
 
         saved, late, was_already = _do_checkin(client, user_id, today_str, ist_now, None, None, False, site_id, shift)
         if was_already:
-            send_whatsapp_message(
-                from_phone,
-                f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
-                f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
-            )
+            if not throttle_outbound(norm, "already_checked_in", 300):
+                send_whatsapp_message(
+                    from_phone,
+                    f"✅ Hi {name}! You're already checked in today at {_fmt_time(saved.get('check_in_at'))}.\n\n"
+                    f"No need to check in again. Reply *OUT* when leaving to end your shift! 🚀",
+                )
             return {"status": "already_checked_in"}
 
         send_location_request_message(
@@ -1013,14 +1080,28 @@ def process_whatsapp_event(payload: dict) -> dict:
     # ------------------------- CHECK-OUT -------------------------
     if intent == "checkout":
         if not checked_in:
-            send_whatsapp_message(
-                from_phone,
-                f"Hi {name}, you haven't checked in yet today, so there's nothing to check out of.\n"
-                f"Please tap *Check-In* (or reply *IN*) first.",
-            )
+            if not throttle_outbound(norm, "not_checked_in", 300):
+                send_whatsapp_message(
+                    from_phone,
+                    f"Hi {name}, you haven't checked in yet today, so there's nothing to check out of.\n"
+                    f"Please tap *Check-In* (or reply *IN*) first.",
+                )
             return {"status": "not_checked_in"}
         if checked_out:
             return say_done()
+
+        # If checkout is ALREADY pending or prompt was sent recently, DO NOT duplicate!
+        fresh_pending = False
+        if rec.get("pending_action") == "checkout" and rec.get("pending_action_at"):
+            try:
+                fresh_pending = (ist_now - _to_ist(rec["pending_action_at"])) <= timedelta(minutes=PENDING_LOCATION_TTL_MIN)
+            except Exception:
+                fresh_pending = False
+
+        if fresh_pending or throttle_outbound(norm, "checkout_prompt", 300):
+            logger.info(f"Checkout prompt already active or sent recently for {norm}")
+            return {"status": "checkout_already_pending"}
+
         _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
         send_location_request_message(
             from_phone,
@@ -1035,14 +1116,26 @@ def process_whatsapp_event(payload: dict) -> dict:
         hours_worked = _hours_between(rec.get("check_in_at"), ist_now) or 0.0
         # If in the morning or checked in less than 1 hour ago: do NOT trigger check-out!
         if hours_worked < 1.0 or ist_now.hour < 13:
-            send_whatsapp_message(
-                from_phone,
-                f"✅ Hi {name}! You're checked in today ({_fmt_time(rec['check_in_at'])}).\n"
-                f"Have a productive day! 🚀 Reply *OUT* when leaving to end your shift.",
-            )
+            if not throttle_outbound(norm, "info_checked_in", 300):
+                send_whatsapp_message(
+                    from_phone,
+                    f"✅ Hi {name}! You're checked in today ({_fmt_time(rec['check_in_at'])}).\n"
+                    f"Have a productive day! 🚀 Reply *OUT* when leaving to end your shift.",
+                )
             return {"status": "info_checked_in"}
 
         # Afternoon / evening follow-up (> 1 hr after check-in): trigger check-out flow
+        fresh_pending = False
+        if rec.get("pending_action") == "checkout" and rec.get("pending_action_at"):
+            try:
+                fresh_pending = (ist_now - _to_ist(rec["pending_action_at"])) <= timedelta(minutes=PENDING_LOCATION_TTL_MIN)
+            except Exception:
+                fresh_pending = False
+
+        if fresh_pending or throttle_outbound(norm, "checkout_prompt", 300):
+            logger.info(f"Checkout prompt already active or sent recently for {norm}")
+            return {"status": "checkout_already_pending"}
+
         _update_record(client, rec["id"], {"pending_action": "checkout", "pending_action_at": ist_now.isoformat()})
         send_location_request_message(
             from_phone,
@@ -1050,7 +1143,8 @@ def process_whatsapp_event(payload: dict) -> dict:
         )
         return {"status": "checkout_location_requested"}
 
-    send_checkin_prompt_message(from_phone, name)
+    if not throttle_outbound(norm, "checkin_prompt_generic", 300):
+        send_checkin_prompt_message(from_phone, name)
     return {"status": "checkin_prompt_sent"}
 
 
@@ -1183,6 +1277,12 @@ def _claim_reminder(client, kind, user_id, date_str) -> tuple[bool, Optional[str
     Returns (False, None) if already claimed for today (duplicate).
     Returns (False, error_msg) if DB insert failed with an unexpected error.
     """
+    mem_key = (kind, str(user_id), date_str)
+    with _DEDUPE_LOCK:
+        if mem_key in _CLAIMED_REMINDERS_MEM:
+            return False, None
+        _CLAIMED_REMINDERS_MEM.add(mem_key)
+
     try:
         client.table("attendance_reminder_log").insert(
             {"reminder_date": date_str, "kind": kind, "user_id": user_id}).execute()
@@ -1196,6 +1296,9 @@ def _claim_reminder(client, kind, user_id, date_str) -> tuple[bool, Optional[str
 
 
 def _release_reminder(client, kind, user_id, date_str):
+    mem_key = (kind, str(user_id), date_str)
+    with _DEDUPE_LOCK:
+        _CLAIMED_REMINDERS_MEM.discard(mem_key)
     try:
         client.table("attendance_reminder_log").delete() \
             .eq("reminder_date", date_str).eq("kind", kind).eq("user_id", user_id).execute()

@@ -250,6 +250,87 @@ class TestAttendanceFlow(unittest.TestCase):
         sent_text = mock_wa_msg.call_args[0][1]
         self.assertIn("already checked in", sent_text)
 
+    @patch("routers.attendance.get_admin_client")
+    def test_duplicate_webhook_message_id_ignored(self, mock_admin_client):
+        """Webhook duplicate/retries with the same message_id are instantly dropped in-memory."""
+        mock_db = MagicMock()
+        mock_admin_client.return_value = mock_db
+        mock_db.rpc.return_value.execute.return_value.data = [self.mock_user]
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "changes": [{
+                    "value": {
+                        "messages": [{
+                            "id": "wamid-test-unique-12345",
+                            "from": "918527880288",
+                            "text": {"body": "👍"},
+                            "type": "text"
+                        }]
+                    }
+                }]
+            }]
+        }
+
+        # First request
+        res1 = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res1.status_code, 200)
+        self.assertEqual(res1.json().get("status"), "ack_ignored")
+
+        # Second request with identical message_id -> instantly dropped
+        res2 = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(res2.json().get("status"), "duplicate_ignored")
+
+    @patch("routers.attendance.get_admin_client")
+    @patch("routers.attendance.send_location_request_message")
+    @patch("routers.attendance.check_non_working_day", return_value=None)
+    def test_duplicate_checkout_prompt_prevented(self, mock_non_working, mock_loc_msg, mock_admin_client):
+        """If user taps OUT or sends message repeatedly, only ONE checkout prompt is sent."""
+        mock_db = MagicMock()
+        mock_admin_client.return_value = mock_db
+        mock_db.rpc.return_value.execute.return_value.data = [self.mock_user]
+
+        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{
+            "id": "rec-1",
+            "user_id": "emp-uuid-1",
+            "date": datetime.now(IST).strftime("%Y-%m-%d"),
+            "check_in_at": "2026-11-25T09:00:00+05:30",
+            "check_out_at": None,
+            "location_verified": True
+        }]
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "changes": [{
+                    "value": {
+                        "messages": [{
+                            "id": "wamid-out-1",
+                            "from": "919999988888",
+                            "text": {"body": "OUT"},
+                            "type": "text"
+                        }]
+                    }
+                }]
+            }]
+        }
+
+        # First checkout attempt -> prompt sent
+        res1 = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res1.status_code, 200)
+        self.assertEqual(res1.json().get("status"), "checkout_location_requested")
+        self.assertEqual(mock_loc_msg.call_count, 1)
+
+        # Immediate second checkout attempt with different message_id -> throttled, no duplicate prompt
+        payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = "wamid-out-2"
+        res2 = client.post("/api/whatsapp-webhook", json=payload)
+        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(res2.json().get("status"), "checkout_already_pending")
+        # Location message must NOT have been called again!
+        self.assertEqual(mock_loc_msg.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
