@@ -2240,13 +2240,17 @@ export default function FlowwiesApp() {
                         🏖 On Approved Leave
                       </span>
                       ) : attendanceToday?.is_holiday ? (
-                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
-                        🎉 {attendanceToday?.holiday_info?.name || "Holiday"}
-                      </span>
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
+                          🎉 {attendanceToday?.holiday_info?.name || "Holiday"}
+                        </span>
+                      ) : attendanceToday?.is_off_day ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-900 border border-amber-400">
+                          🎉 {attendanceToday?.off_day_reason || "Weekly Off"}
+                        </span>
                       ) : (
-                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700 border border-gray-300">
-                        ⚪ Not Marked Yet
-                      </span>
+                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700 border border-gray-300">
+                          ⚪ Not Marked Yet
+                        </span>
                       )}
                     </div>
                   </div>
@@ -2510,12 +2514,16 @@ export default function FlowwiesApp() {
                                 <span className="block text-[10px] text-amber-700 font-extrabold">Auto Closed</span>
                               )}
                             </div>
+                          ) : rec.check_in_at && rec.date < new Date().toISOString().slice(0, 10) ? (
+                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-extrabold text-[11px] inline-flex items-center gap-1">
+                              🚩 Missing Check-Out
+                            </span>
                           ) : (
                             <span className="text-xs text-[var(--muted)] italic">In Progress</span>
                           )}
                         </td>
                         <td className="py-3 px-3 font-mono font-bold text-[var(--v)]">
-                          {rec.work_hours ? `${rec.work_hours}h` : "—"}
+                          {rec.work_hours ? `${rec.work_hours}h` : rec.check_in_at && !rec.check_out_at && rec.date < new Date().toISOString().slice(0, 10) ? <span className="text-red-500 text-xs italic">Incomplete</span> : "—"}
                         </td>
                         <td className="py-3 px-3">
                           {rec.check_in_within_geofence ? (
@@ -2530,14 +2538,20 @@ export default function FlowwiesApp() {
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 items-start">
-                            <span
-                              className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full capitalize ${rec.status === "checked_out"
-                                ? "bg-blue-100 text-blue-900 border border-blue-300"
-                                : "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                }`}
-                            >
-                              {rec.status.replace("_", " ")}
-                            </span>
+                            {rec.check_in_at && !rec.check_out_at && rec.date < new Date().toISOString().slice(0, 10) ? (
+                              <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-900 border border-red-300 inline-flex items-center gap-1">
+                                🚩 Missing Check-Out
+                              </span>
+                            ) : (
+                              <span
+                                className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full capitalize ${rec.status === "checked_out"
+                                  ? "bg-blue-100 text-blue-900 border border-blue-300"
+                                  : "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                  }`}
+                              >
+                                {rec.status.replace("_", " ")}
+                              </span>
+                            )}
                             {rec.auto_checked_out && (
                               <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
                                 ⚡ Auto
@@ -2667,6 +2681,12 @@ export default function FlowwiesApp() {
                                     <span className="block text-[10px] text-amber-700 font-extrabold">Auto Closed</span>
                                   )}
                                 </div>
+                              ) : rec?.check_in_at && rec?.date && rec.date < new Date().toISOString().slice(0, 10) ? (
+                                <span className="text-[11px] font-extrabold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                                  🚩 Missing
+                                </span>
+                              ) : rec?.check_in_at ? (
+                                <span className="text-xs text-[var(--muted)] italic">In Progress</span>
                               ) : (
                                 "—"
                               )}
@@ -2689,16 +2709,22 @@ export default function FlowwiesApp() {
                             </td>
                             <td className="py-3 px-3">
                               <div className="flex flex-col gap-1 items-start">
-                                <span
-                                  className={`text-xs font-extrabold px-2.5 py-1 rounded-full capitalize ${m.status === "checked_in" || m.status === "checked_out"
-                                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                    : m.status === "on_leave"
-                                      ? "bg-purple-100 text-purple-900 border border-purple-300"
-                                      : "bg-gray-100 text-gray-700 border border-gray-300"
-                                    }`}
-                                >
-                                  {m.status.replace("_", " ")}
-                                </span>
+                                {rec?.check_in_at && !rec?.check_out_at && rec?.date && rec.date < new Date().toISOString().slice(0, 10) ? (
+                                  <span className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-red-100 text-red-900 border border-red-300 inline-flex items-center gap-1">
+                                    🚩 Missing Check-Out
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`text-xs font-extrabold px-2.5 py-1 rounded-full capitalize ${m.status === "checked_in" || m.status === "checked_out"
+                                      ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                      : m.status === "on_leave"
+                                        ? "bg-purple-100 text-purple-900 border border-purple-300"
+                                        : "bg-gray-100 text-gray-700 border border-gray-300"
+                                      }`}
+                                  >
+                                    {m.status.replace("_", " ")}
+                                  </span>
+                                )}
                                 {rec?.auto_checked_out && (
                                   <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
                                     ⚡ Auto
@@ -2763,7 +2789,7 @@ export default function FlowwiesApp() {
                       <th className="py-3 px-3">Present Days</th>
                       <th className="py-3 px-3">Late Days</th>
                       <th className="py-3 px-3">Leaves Taken</th>
-                      <th className="py-3 px-3">Auto Checkouts</th>
+                      <th className="py-3 px-3">Missing Check-Outs</th>
                       <th className="py-3 px-3">Total Hours</th>
                       <th className="py-3 px-3">Avg Hours/Day</th>
                     </tr>
@@ -2779,7 +2805,7 @@ export default function FlowwiesApp() {
                         <td className="py-3 px-3 font-bold text-emerald-800">{emp.present_days}</td>
                         <td className="py-3 px-3 font-bold text-red-600">{emp.late_days}</td>
                         <td className="py-3 px-3 font-bold text-purple-700">{emp.leave_days}</td>
-                        <td className="py-3 px-3 font-bold text-amber-700">{emp.auto_checkout_days || 0}</td>
+                        <td className="py-3 px-3 font-bold text-red-600">{emp.missing_checkout_days || 0}</td>
                         <td className="py-3 px-3 font-mono font-bold">{emp.total_hours}h</td>
                         <td className="py-3 px-3 font-mono font-bold text-[var(--v)]">{emp.avg_daily_hours}h</td>
                       </tr>
