@@ -317,6 +317,8 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
     clean_email = body.email.strip().lower()
     clean_name = body.full_name.strip()
     clean_role = "manager" if body.role.lower() == "manager" else "employee"
+    clean_manager_id = body.manager_id.strip() if (body.manager_id and body.manager_id.strip()) else None
+    clean_dob = body.dob.strip() if (body.dob and body.dob.strip()) else None
 
     # Check if profile with this email already exists
     existing = admin_client.table("profiles").select("id, email, full_name").eq("email", clean_email).execute()
@@ -333,12 +335,12 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             "hrms_role": clean_role,
             "role_level": 1 if clean_role == "manager" else 0,
             "role_id": role_id,
-            "manager_id": body.manager_id if body.manager_id else None,
+            "manager_id": clean_manager_id,
             "can_access_crm": has_growth,
             "is_active": True
         }
-        if body.dob:
-            upd["dob"] = body.dob
+        if clean_dob:
+            upd["dob"] = clean_dob
         admin_client.table("profiles").update(upd).eq("id", member_id).execute()
         return {"status": "updated", "id": member_id, "message": "Updated existing team member."}
 
@@ -363,98 +365,116 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
     primary_dept_id = dept_res.data[0]["id"] if dept_res.data else None
     has_growth = any(d.lower() == "growth" for d in depts) or clean_role == "manager"
 
-    # 1. Attempt creating in BOTH auth.users (Authentication) and public.profiles via RPC
     created_id = None
-    try:
-        rpc_res = admin_client.rpc("create_team_user", {
-            "new_email": clean_email,
-            "new_full_name": clean_name,
-            "new_role": clean_role,
-            "new_department": primary_d,
-            "new_password": temporary_password
-        }).execute()
-        if rpc_res.data:
-            created_id = str(rpc_res.data)
-            print(f"✓ Created user in Auth & Profiles via create_team_user RPC: {clean_email} -> {created_id}")
-            extra_upd = {}
-            if body.dob:
-                extra_upd["dob"] = body.dob
-            if body.manager_id:
-                extra_upd["manager_id"] = body.manager_id
-            if role_id:
-                extra_upd["role_id"] = role_id
-            if primary_dept_id:
-                extra_upd["primary_department_id"] = primary_dept_id
-            if extra_upd:
-                admin_client.table("profiles").update(extra_upd).eq("id", created_id).execute()
-    except Exception as rpc_err:
-        print("Notice on create_team_user RPC:", rpc_err)
 
-    # 2. Fallback to direct insertion if RPC was not created yet
-    if not created_id:
-        auth_id = None
-        if supabase_anon and hasattr(supabase_anon, "auth"):
-            try:
-                auth_res = supabase_anon.auth.sign_up({
-                    "email": clean_email,
-                    "password": temporary_password,
-                    "options": {
-                        "data": {
-                            "full_name": clean_name
-                        }
-                    }
-                })
-                if auth_res and auth_res.user and auth_res.user.id:
-                    auth_id = str(auth_res.user.id)
-                    print(f"✓ Created Supabase Auth user: {clean_email} -> {auth_id}")
-            except Exception as auth_err:
-                print("Notice on auth sign_up:", auth_err)
-
-        new_id = auth_id or str(uuid.uuid4())
-        new_prof = {
-            "id": new_id,
-            "full_name": clean_name,
-            "email": clean_email,
-            "role_level": 1 if clean_role == "manager" else 0,
-            "hrms_role": clean_role,
-            "role_id": role_id,
-            "department": primary_d,
-            "secondary_department": sec_d,
-            "primary_department_id": primary_dept_id,
-            "manager_id": body.manager_id if body.manager_id else None,
-            "can_access_crm": has_growth,
-            "is_active": True,
-            "must_change_password": True
-        }
-        if body.dob:
-            new_prof["dob"] = body.dob
-
+    # 1. Try Supabase Auth Admin API (official, direct, bypasses signup rate-limits and auto-confirms email)
+    if hasattr(admin_client, "auth") and hasattr(admin_client.auth, "admin"):
         try:
-            ins = admin_client.table("profiles").insert(new_prof).execute()
-            created_id = ins.data[0]["id"] if ins.data else new_id
-        except Exception as e:
-            err_msg = str(e)
-            if "company_department" in err_msg or "22P02" in err_msg:
+            admin_user_res = admin_client.auth.admin.create_user({
+                "email": clean_email,
+                "password": temporary_password,
+                "email_confirm": True,
+                "user_metadata": {"full_name": clean_name}
+            })
+            if admin_user_res and getattr(admin_user_res, "user", None):
+                created_id = str(admin_user_res.user.id)
+                print(f"✓ Created Supabase Auth user via admin API: {clean_email} -> {created_id}")
+        except Exception as admin_auth_err:
+            err_str = str(admin_auth_err).lower()
+            print("Notice on admin.create_user:", admin_auth_err)
+            if "already registered" in err_str or "already exists" in err_str or "23505" in err_str:
                 try:
-                    new_prof["department"] = primary_d.lower()
-                    ins = admin_client.table("profiles").insert(new_prof).execute()
-                    created_id = ins.data[0]["id"] if ins.data else new_id
-                except Exception:
-                    try:
-                        new_prof.pop("department", None)
-                        new_prof.pop("secondary_department", None)
-                        ins = admin_client.table("profiles").insert(new_prof).execute()
-                        created_id = ins.data[0]["id"] if ins.data else new_id
-                    except Exception as final_e:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to create profile: {str(final_e)}. Please run migration 007_fix_hrms_rls_policies.sql in Supabase SQL editor."
-                        )
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to create profile: {err_msg}. Please run migration 007_fix_hrms_rls_policies.sql in Supabase SQL editor."
-                )
+                    list_res = admin_client.auth.admin.list_users()
+                    users_list = getattr(list_res, "users", list_res) if list_res else []
+                    for u in users_list:
+                        if getattr(u, "email", "").lower() == clean_email:
+                            created_id = str(u.id)
+                            print(f"✓ Found existing Supabase Auth user: {clean_email} -> {created_id}")
+                            break
+                except Exception as list_err:
+                    print("Notice on list_users lookup:", list_err)
+
+    # 2. Attempt creating in BOTH auth.users and public.profiles via RPC
+    if not created_id:
+        try:
+            rpc_res = admin_client.rpc("create_team_user", {
+                "new_email": clean_email,
+                "new_full_name": clean_name,
+                "new_role": clean_role,
+                "new_department": primary_d,
+                "new_password": temporary_password
+            }).execute()
+            if rpc_res.data:
+                created_id = str(rpc_res.data)
+                print(f"✓ Created user via create_team_user RPC: {clean_email} -> {created_id}")
+        except Exception as rpc_err:
+            print("Notice on create_team_user RPC:", rpc_err)
+
+    # 3. Fallback to Supabase anon sign_up if neither admin API nor RPC worked
+    if not created_id and supabase_anon and hasattr(supabase_anon, "auth"):
+        try:
+            auth_res = supabase_anon.auth.sign_up({
+                "email": clean_email,
+                "password": temporary_password,
+                "options": {
+                    "data": {
+                        "full_name": clean_name
+                    }
+                }
+            })
+            if auth_res and auth_res.user and auth_res.user.id:
+                created_id = str(auth_res.user.id)
+                print(f"✓ Created Supabase Auth user: {clean_email} -> {created_id}")
+        except Exception as auth_err:
+            print("Notice on auth sign_up:", auth_err)
+
+    # 4. Final fallback ID if no auth mechanism returned an ID
+    if not created_id:
+        created_id = str(uuid.uuid4())
+
+    new_prof = {
+        "id": created_id,
+        "full_name": clean_name,
+        "email": clean_email,
+        "role_level": 1 if clean_role == "manager" else 0,
+        "hrms_role": clean_role,
+        "role_id": role_id,
+        "department": primary_d,
+        "secondary_department": sec_d,
+        "primary_department_id": primary_dept_id,
+        "manager_id": clean_manager_id,
+        "can_access_crm": has_growth,
+        "is_active": True,
+        "must_change_password": True
+    }
+    if clean_dob:
+        new_prof["dob"] = clean_dob
+
+    try:
+        ins = admin_client.table("profiles").upsert(new_prof).execute()
+        if not ins.data:
+            admin_client.table("profiles").insert(new_prof).execute()
+    except Exception as e:
+        err_msg = str(e)
+        if "company_department" in err_msg or "22P02" in err_msg:
+            try:
+                new_prof["department"] = primary_d.lower()
+                admin_client.table("profiles").upsert(new_prof).execute()
+            except Exception:
+                try:
+                    new_prof.pop("department", None)
+                    new_prof.pop("secondary_department", None)
+                    admin_client.table("profiles").upsert(new_prof).execute()
+                except Exception as final_e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to create profile: {str(final_e)}. Please run migration 007_fix_hrms_rls_policies.sql in Supabase SQL editor."
+                    )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create profile: {err_msg}. Please run migration 007_fix_hrms_rls_policies.sql in Supabase SQL editor."
+            )
 
     # Sync profile_departments
     sync_member_departments(admin_client, created_id, depts)
