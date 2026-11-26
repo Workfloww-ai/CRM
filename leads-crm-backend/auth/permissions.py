@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Depends
 from auth.dependencies import get_current_user
 from db.queries import get_profile_role
-from db.client import get_client_for_user
+from db.client import get_client_for_user, get_admin_client
 
 
 def require_admin(user=Depends(get_current_user)):
@@ -50,13 +50,19 @@ def require_crm_access(user=Depends(get_current_user)):
 
 def require_hrms_manager(user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
+    admin_client = get_admin_client() or client
+    res = None
     try:
-        res = client.table("profiles").select("role_level, hrms_role, role_id, hrms_roles(name)").eq("id", user.id).single().execute()
+        res = admin_client.table("profiles").select("role_level, hrms_role, role_id, hrms_roles(name)").eq("id", user.id).single().execute()
     except Exception:
         try:
-            res = client.table("profiles").select("role_level, hrms_role, role_id").eq("id", user.id).single().execute()
+            res = admin_client.table("profiles").select("role_level, hrms_role, role_id").eq("id", user.id).single().execute()
         except Exception:
-            res = None
+            if hasattr(user, "email") and user.email:
+                try:
+                    res = admin_client.table("profiles").select("role_level, hrms_role, role_id").eq("email", user.email.lower().strip()).single().execute()
+                except Exception:
+                    res = None
 
     if not res or not res.data:
         raise HTTPException(status_code=403, detail="User profile not found")

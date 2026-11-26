@@ -1878,9 +1878,9 @@ export default function FlowwiesApp() {
     setMemberEditSuccess("");
     try {
       const payload: any = {
-        full_name: memberEditForm.full_name?.trim(),
-        email: memberEditForm.email?.trim()?.toLowerCase(),
-        emp_code: memberEditForm.emp_code?.trim(),
+        full_name: memberEditForm.full_name?.trim() || null,
+        email: memberEditForm.email?.trim()?.toLowerCase() || null,
+        emp_code: memberEditForm.emp_code?.trim() || null,
         role: memberEditForm.role,
         hrms_role: memberEditForm.role,
         departments: memberEditForm.departments,
@@ -1941,22 +1941,22 @@ export default function FlowwiesApp() {
     e.preventDefault();
     try {
       const payload: any = {
-        emergency_contact_name: profileForm.emergency_contact_name,
-        emergency_contact_phone: profileForm.emergency_contact_phone,
-        address: profileForm.address,
-        city: profileForm.city,
-        state: profileForm.state,
-        pin_code: profileForm.pin_code,
-        bank_account_holder: profileForm.bank_account_holder,
-        bank_name: profileForm.bank_name,
-        bank_account_number: profileForm.bank_account_number,
-        ifsc_code: profileForm.ifsc_code,
-        upi_id: profileForm.upi_id,
+        emergency_contact_name: profileForm.emergency_contact_name?.trim() || null,
+        emergency_contact_phone: profileForm.emergency_contact_phone?.trim() || null,
+        address: profileForm.address?.trim() || null,
+        city: profileForm.city?.trim() || null,
+        state: profileForm.state?.trim() || null,
+        pin_code: profileForm.pin_code?.trim() || null,
+        bank_account_holder: profileForm.bank_account_holder?.trim() || null,
+        bank_name: profileForm.bank_name?.trim() || null,
+        bank_account_number: profileForm.bank_account_number?.trim() || null,
+        ifsc_code: profileForm.ifsc_code?.trim()?.toUpperCase() || null,
+        upi_id: profileForm.upi_id?.trim() || null,
       };
       // Only managers can self-update phone or personal_email
       if (profile?.is_manager) {
-        payload.phone = profileForm.phone;
-        payload.personal_email = profileForm.personal_email;
+        payload.phone = profileForm.phone?.trim() || null;
+        payload.personal_email = profileForm.personal_email?.trim()?.toLowerCase() || null;
       }
       const res = await fetch(`${API_URL}/hrms/me/profile`, {
         method: "PATCH",

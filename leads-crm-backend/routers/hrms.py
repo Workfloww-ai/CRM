@@ -134,33 +134,37 @@ def record_password_changed(user=Depends(get_current_user)):
 @router.patch("/me/profile")
 def update_my_profile(body: ProfileSelfUpdate, user=Depends(get_current_user)):
     client = get_client_for_user(user.token)
+    admin_client = get_admin_client() or client
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         return {"status": "noop"}
 
     # Employees cannot edit their email or mobile phone number
-    prof = client.table("profiles").select("role_level, hrms_role").eq("id", user.id).execute()
+    prof = admin_client.table("profiles").select("role_level, hrms_role").eq("id", user.id).execute()
     prof_data = prof.data[0] if (prof and prof.data) else {}
-    user_email = (getattr(user, "email", "") or "").lower()
     is_mgr = (
         (prof_data.get("role_level") or 0) >= 1
         or (prof_data.get("hrms_role") or "").lower() in ("manager", "admin")
     )
     if not is_mgr:
-        # Email cannot be edited by employees, but phone can be updated for WhatsApp check-in
+        # Email cannot be edited by employees
         update_data.pop("email", None)
 
-    # Clean empty strings for date or uuid fields
-    for k in ["dob"]:
-        if k in update_data and (update_data[k] == "" or update_data[k] is None):
+    # Clean empty strings for all fields to avoid Postgres syntax/type errors
+    for k, v in list(update_data.items()):
+        if isinstance(v, str):
+            v_clean = v.strip()
+            update_data[k] = v_clean if v_clean != "" else None
+        elif v == "":
             update_data[k] = None
 
     try:
-        res = update_hrms_profile(client, user.id, update_data)
+        clean_uid = user.id.strip() if isinstance(user.id, str) else str(user.id)
+        res = update_hrms_profile(admin_client, clean_uid, update_data)
         if not res.data:
             # Fallback: if user.id from auth.users does not match profile.id, match by user.email
             if hasattr(user, "email") and user.email:
-                res = client.table("profiles").update(update_data).eq("email", user.email.lower().strip()).execute()
+                res = admin_client.table("profiles").update(update_data).eq("email", user.email.lower().strip()).execute()
         if not res.data:
             raise HTTPException(status_code=400, detail="Profile update affected 0 rows. Please check if profile exists.")
         return res.data[0]
@@ -269,19 +273,28 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
     ]:
         val = getattr(body, field, None)
         if val is not None:
-            # Clean empty strings for date and uuid fields to avoid Postgres syntax errors
-            if field in ["dob", "date_joined", "manager_id"] and val == "":
+            if isinstance(val, str):
+                v_clean = val.strip()
+                val = v_clean if v_clean != "" else None
+            elif val == "":
                 val = None
             update_data[field] = val
 
     if update_data:
         try:
-            res = update_team_member_admin(admin_client, member_id, update_data)
+            clean_pid = member_id.strip() if isinstance(member_id, str) else str(member_id)
+            res = update_team_member_admin(admin_client, clean_pid, update_data)
             if not res.data:
                 # Fallback: if member_id didn't match id in profiles, try matching by email
                 target_email = getattr(body, "email", None)
                 if target_email:
                     res = admin_client.table("profiles").update(update_data).eq("email", target_email.lower().strip()).execute()
+            if not res.data:
+                # Secondary fallback: find existing profile by id or email
+                find_res = admin_client.table("profiles").select("id").or_(f"id.eq.{clean_pid},email.eq.{clean_pid}").execute()
+                if find_res.data and len(find_res.data) > 0:
+                    real_pid = find_res.data[0]["id"]
+                    res = admin_client.table("profiles").update(update_data).eq("id", real_pid).execute()
             if not res.data:
                 raise HTTPException(status_code=400, detail="Profile update affected 0 rows. Please verify member ID exists in profiles.")
         except HTTPException:
