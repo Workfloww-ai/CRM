@@ -9,7 +9,7 @@ from auth.permissions import (
     require_hrms_admin,
     require_crm_access
 )
-from db.client import get_client_for_user
+from db.client import get_client_for_user, get_admin_client, supabase_anon
 from db.queries import (
     get_hrms_profile,
     update_hrms_profile,
@@ -228,12 +228,13 @@ def get_team(user=Depends(get_current_user)):
 @router.patch("/team/{member_id}")
 def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=Depends(require_hrms_manager)):
     client = get_client_for_user(user.token)
+    admin_client = get_admin_client() or client
     update_data = {}
 
     target_role = body.role or body.hrms_role
     if target_role:
         clean_role = "manager" if target_role.lower() == "manager" else "employee"
-        role_res = client.table("hrms_roles").select("id").eq("name", clean_role).execute()
+        role_res = admin_client.table("hrms_roles").select("id").eq("name", clean_role).execute()
         role_id = role_res.data[0]["id"] if role_res.data else None
         update_data["hrms_role"] = clean_role
         update_data["role_level"] = 1 if clean_role == "manager" else 0
@@ -241,7 +242,7 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
             update_data["role_id"] = role_id
 
     if body.departments is not None:
-        sync_member_departments(client, member_id, body.departments)
+        sync_member_departments(admin_client, member_id, body.departments)
         has_growth = any(d.lower() == "growth" for d in body.departments)
         update_data["can_access_crm"] = has_growth
 
@@ -271,12 +272,12 @@ def update_member_by_manager(member_id: str, body: TeamMemberAdminUpdate, user=D
 
     if update_data:
         try:
-            res = update_team_member_admin(client, member_id, update_data)
+            res = update_team_member_admin(admin_client, member_id, update_data)
             if not res.data:
                 # Fallback: if member_id didn't match id in profiles, try matching by email
                 target_email = getattr(body, "email", None)
                 if target_email:
-                    res = client.table("profiles").update(update_data).eq("email", target_email.lower().strip()).execute()
+                    res = admin_client.table("profiles").update(update_data).eq("email", target_email.lower().strip()).execute()
             if not res.data:
                 raise HTTPException(status_code=400, detail="Profile update affected 0 rows. Please verify member ID exists in profiles.")
         except HTTPException:
@@ -311,19 +312,20 @@ def generate_temporary_password(length: int = 12) -> str:
 def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager)):
     import uuid
     client = get_client_for_user(user.token)
+    admin_client = get_admin_client() or client
 
     clean_email = body.email.strip().lower()
     clean_name = body.full_name.strip()
     clean_role = "manager" if body.role.lower() == "manager" else "employee"
 
     # Check if profile with this email already exists
-    existing = client.table("profiles").select("id, email, full_name").eq("email", clean_email).execute()
+    existing = admin_client.table("profiles").select("id, email, full_name").eq("email", clean_email).execute()
     if existing.data and len(existing.data) > 0:
         member_id = existing.data[0]["id"]
-        role_res = client.table("hrms_roles").select("id").eq("name", clean_role).execute()
+        role_res = admin_client.table("hrms_roles").select("id").eq("name", clean_role).execute()
         role_id = role_res.data[0]["id"] if role_res.data else None
         depts = body.departments or ["Tech"]
-        sync_member_departments(client, member_id, depts)
+        sync_member_departments(admin_client, member_id, depts)
         has_growth = any(d.lower() == "growth" for d in depts) or clean_role == "manager"
 
         upd = {
@@ -337,7 +339,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
         }
         if body.dob:
             upd["dob"] = body.dob
-        client.table("profiles").update(upd).eq("id", member_id).execute()
+        admin_client.table("profiles").update(upd).eq("id", member_id).execute()
         return {"status": "updated", "id": member_id, "message": "Updated existing team member."}
 
     # Generate a random temporary password for newly provisioned user
@@ -351,20 +353,20 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
     from db.client import supabase_anon
     from services.email import send_welcome_credentials_email
 
-    role_res = client.table("hrms_roles").select("id").eq("name", clean_role).execute()
+    role_res = admin_client.table("hrms_roles").select("id").eq("name", clean_role).execute()
     role_id = role_res.data[0]["id"] if role_res.data else None
 
     depts = body.departments or ["Tech"]
     primary_d = depts[0]
     sec_d = depts[1] if len(depts) > 1 else None
-    dept_res = client.table("departments").select("id").eq("name", primary_d).execute()
+    dept_res = admin_client.table("departments").select("id").eq("name", primary_d).execute()
     primary_dept_id = dept_res.data[0]["id"] if dept_res.data else None
     has_growth = any(d.lower() == "growth" for d in depts) or clean_role == "manager"
 
     # 1. Attempt creating in BOTH auth.users (Authentication) and public.profiles via RPC
     created_id = None
     try:
-        rpc_res = client.rpc("create_team_user", {
+        rpc_res = admin_client.rpc("create_team_user", {
             "new_email": clean_email,
             "new_full_name": clean_name,
             "new_role": clean_role,
@@ -384,7 +386,7 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             if primary_dept_id:
                 extra_upd["primary_department_id"] = primary_dept_id
             if extra_upd:
-                client.table("profiles").update(extra_upd).eq("id", created_id).execute()
+                admin_client.table("profiles").update(extra_upd).eq("id", created_id).execute()
     except Exception as rpc_err:
         print("Notice on create_team_user RPC:", rpc_err)
 
@@ -428,20 +430,20 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
             new_prof["dob"] = body.dob
 
         try:
-            ins = client.table("profiles").insert(new_prof).execute()
+            ins = admin_client.table("profiles").insert(new_prof).execute()
             created_id = ins.data[0]["id"] if ins.data else new_id
         except Exception as e:
             err_msg = str(e)
             if "company_department" in err_msg or "22P02" in err_msg:
                 try:
                     new_prof["department"] = primary_d.lower()
-                    ins = client.table("profiles").insert(new_prof).execute()
+                    ins = admin_client.table("profiles").insert(new_prof).execute()
                     created_id = ins.data[0]["id"] if ins.data else new_id
                 except Exception:
                     try:
                         new_prof.pop("department", None)
                         new_prof.pop("secondary_department", None)
-                        ins = client.table("profiles").insert(new_prof).execute()
+                        ins = admin_client.table("profiles").insert(new_prof).execute()
                         created_id = ins.data[0]["id"] if ins.data else new_id
                     except Exception as final_e:
                         raise HTTPException(
@@ -455,13 +457,13 @@ def create_team_member(body: TeamMemberCreate, user=Depends(require_hrms_manager
                 )
 
     # Sync profile_departments
-    sync_member_departments(client, created_id, depts)
+    sync_member_departments(admin_client, created_id, depts)
 
     # Create default leave balances
     try:
         from datetime import datetime, timezone
         cur_year = datetime.now(timezone.utc).year
-        client.table("leave_balances").insert({
+        admin_client.table("leave_balances").insert({
             "user_id": created_id,
             "year": cur_year,
             "casual_days": float(body.casual_days if body.casual_days is not None else 2),
